@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: |
+          bash -n install.sh
+          bash -n uninstall.sh
+
+      - name: ShellCheck (errors only)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck -S error install.sh uninstall.sh
+
+      - name: Python compiles
+        run: python3 -m py_compile lib/ui.py lib/brain_energize.py
+
+      - name: UI preview renders
+        run: |
+          python3 lib/ui.py --demo | head -n 30
+          python3 lib/ui.py --demo --installed | head -n 30
+
+      - name: Installer dry-run (changes nothing)
+        run: |
+          bash install.sh --dry-run --no-anim -y --agents claude --skip deps
+          test ! -e "$HOME/.megabrain"
+
+      - name: Version files agree
+        run: |
+          v="$(tr -d '[:space:]' < VERSION)"
+          grep -q "^MB_VERSION=\"$v\"" install.sh
+          grep -q "^## \[$v\]" CHANGELOG.md

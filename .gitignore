@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# Local state and logs created by the installer
+.megabrain/
+*.log
+*.bak
+*.bak-*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
