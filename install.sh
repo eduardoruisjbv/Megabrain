@@ -38,7 +38,7 @@
 
 set -uo pipefail
 
-MB_VERSION="1.0.0"
+MB_VERSION="1.0.1"
 MB_REPO="eduardoruisjbv/Megabrain"
 MB_REF="${MEGABRAIN_REF:-main}"
 MB_RAW="https://raw.githubusercontent.com/${MB_REPO}/${MB_REF}"

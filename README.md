@@ -4,7 +4,7 @@
 
 **One command that gives every AI coding agent on your machine token-saving tools and a long-term memory vault.**
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey)
 ![Shell](https://img.shields.io/badge/shell-bash-4EAA25)
@@ -181,7 +181,8 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
 |---|---|
 | Fedora / Nobara (dnf) | tested end-to-end in a sandbox |
 | Debian / Ubuntu (apt) · Arch (pacman) · openSUSE (zypper) · Alpine (apk) · Void (xbps) | supported by design, not yet verified — [issues welcome](https://github.com/eduardoruisjbv/Megabrain/issues) |
-| macOS (Homebrew) | supported by design, not yet verified |
+| macOS Intel (Homebrew) | tested end-to-end by the author |
+| macOS Apple Silicon | supported by design, not yet verified |
 | Windows | use WSL |
 | Immutable systems (rpm-ostree, NixOS) | system packages are not installed automatically; install `curl git nodejs` yourself |
 
@@ -208,7 +209,7 @@ a manifest tracks what it owns. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.m
 
 [Semantic Versioning](https://semver.org). The version lives in [`VERSION`](VERSION),
 every release is tagged `vX.Y.Z`, and changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
-Pin a version with `MEGABRAIN_REF=v1.0.0`.
+Pin a version with `MEGABRAIN_REF=v1.0.1`.
 
 ## Credits
 

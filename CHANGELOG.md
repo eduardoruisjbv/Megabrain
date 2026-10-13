@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-13
+
 ### Changed
 - README hero now shows only the brain artwork, without installer context.
+
+### Verified
+- Full install verified on macOS (Intel, Homebrew).
 
 ## [1.0.0] - 2026-10-13
 
@@ -41,5 +46,6 @@ First public release.
   installing or writing anything.
 - Linux (apt, dnf, yum, pacman, zypper, apk, xbps), macOS (Homebrew) and WSL support.
 
-[Unreleased]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/eduardoruisjbv/Megabrain/releases/tag/v1.0.0
