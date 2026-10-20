@@ -51,6 +51,8 @@ INSTALL_STEPS = [
     ("claude-mem", "claude-mem", "persistent memory · worker + vector store"),
     ("superpowers", "superpowers", "process skills pack"),
     ("ecc", "ECC", "agents, skills and hooks · profile standard"),
+    ("text-to-cad", "text-to-cad", "local CAD tools for Codex and Claude Code"),
+    ("claude-code-setup", "Claude Code setup", "project-specific automation recommendations"),
     ("vault", "Vault", "memory backup vault"),
     ("wiring", "Wiring", "memory sync, CLI and manifest"),
 ]
@@ -62,6 +64,8 @@ UNINSTALL_STEPS = [
     ("claude-mem", "claude-mem", "removing plugin (data kept)"),
     ("superpowers", "superpowers", "removing plugin"),
     ("ecc", "ECC", "removing plugin"),
+    ("claude-code-setup", "Claude Code setup", "removing plugin"),
+    ("text-to-cad", "text-to-cad", "removing Codex and Claude Code plugins"),
     ("vault", "Vault", "your memories are kept unless you say so"),
     ("marker", "Marker", "removing manifest and CLI"),
 ]
@@ -429,6 +433,8 @@ class DemoSource(object):
             ("claude-mem", 2.8, [(0.3, "adding marketplace thedotmack/claude-mem"), (0.6, "starting worker and vector store"), (0.85, "memory database initialized (empty)")]),
             ("superpowers", 1.8, [(0.4, "adding marketplace claude-plugins-official"), (0.85, "plugin superpowers enabled")]),
             ("ecc", 2.6, [(0.3, "adding marketplace affaan-m/ECC"), (0.6, "resolving agents and skills"), (0.85, "hook profile: standard")]),
+            ("text-to-cad", 2.8, [(0.3, "adding official marketplace for detected agents"), (0.65, "installing CAD tools and viewer plugin"), (0.9, "ready on first Codex or Claude Code session")]),
+            ("claude-code-setup", 1.8, [(0.4, "adding Anthropic marketplace"), (0.85, "read-only setup recommendations enabled")]),
             ("vault", 3.2, [(0.15, "creating hidden vault ~/.megabrain/vault"), (0.4, "PARA tree: Inbox · Projetos · Áreas · Recursos · Arquivo"),
                             (0.65, "seeding MAPA.md, AGENTS.md, Templates/"), (0.88, "writing .obsidian/graph.json")]),
             ("wiring", 2.5, [(0.25, "installing memory sync script"), (0.5, "sync timer armed: every 48h"),
@@ -461,9 +467,9 @@ class DemoSource(object):
     def _installed(self):
         yield ("emit", ["mode", "installed"])
         yield ("emit", ["meta", "present",
-                        "environment,agents,rtk,graft,cbm,claude-mem,superpowers,ecc,vault,wiring"])
+                        "environment,agents,rtk,graft,cbm,claude-mem,superpowers,ecc,text-to-cad,claude-code-setup,vault,wiring"])
         yes = yield ("ask", ["uninstall", "MEGABRAIN already installed",
-                             "v1.0.0 · installed 2026-10-13 · " + ", ".join(self.agents),
+                             "v1.0.2 · installed 2026-10-20 · " + ", ".join(self.agents),
                              "removes only what MEGABRAIN installed · vault is kept",
                              "Uninstall MEGABRAIN?", "no"])
         if not yes:
@@ -479,6 +485,8 @@ class DemoSource(object):
             ("claude-mem", 1.6, [(0.5, "plugin removed (data kept)")]),
             ("superpowers", 1.2, [(0.5, "plugin removed")]),
             ("ecc", 1.4, [(0.5, "plugin removed")]),
+            ("claude-code-setup", 1.2, [(0.5, "plugin removed")]),
+            ("text-to-cad", 1.6, [(0.3, "Claude Code plugin removed when managed"), (0.75, "Codex plugin removed when managed")]),
         ]
         for step in self._run_steps(steps):
             yield step
@@ -586,7 +594,7 @@ def main():
     ap = argparse.ArgumentParser(description="MEGABRAIN terminal UI (renderer only)")
     ap.add_argument("--events")
     ap.add_argument("--answers")
-    ap.add_argument("--version", default="1.0.0")
+    ap.add_argument("--version", default="1.0.2")
     ap.add_argument("--watch-pid", type=int, default=0)
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--installed", action="store_true")

@@ -4,8 +4,9 @@
 #
 # Detects the coding agents installed on this machine (Claude Code, Codex,
 # Gemini, Cursor, ...) and sets up a token-saving + memory stack for all of
-# them: RTK, graft, codebase-memory-mcp and, for Claude Code, the claude-mem,
-# superpowers and ECC plugins. Always creates a plain-Markdown memory vault
+# them: RTK, graft, codebase-memory-mcp, text-to-cad for Codex and Claude Code,
+# and Claude Code plugins for claude-mem, superpowers, ECC and setup guidance.
+# Always creates a plain-Markdown memory vault
 # (a backup that works with or without Obsidian) and then offers Obsidian.
 #
 # Privacy: nothing is read from or copied between machines. The script only
@@ -22,7 +23,7 @@
 #
 # Options:
 #   --agents a,b,c       skip detection and use this list (e.g. claude,codex)
-#   --skip <item>        skip: rtk graft cbm claude-mem superpowers ecc vault deps obsidian
+#   --skip <item>        skip: rtk graft cbm claude-mem superpowers ecc text-to-cad claude-code-setup vault deps obsidian
 #   --only <item>        install only this item (repeatable)
 #   --language <lang>    answer language for Claude Code (default: unchanged)
 #   --vault-dir <dir>    vault location (default: ~/.megabrain/vault, hidden)
@@ -38,7 +39,7 @@
 
 set -uo pipefail
 
-MB_VERSION="1.0.1"
+MB_VERSION="1.0.2"
 MB_REPO="eduardoruisjbv/Megabrain"
 MB_REF="${MEGABRAIN_REF:-main}"
 MB_RAW="https://raw.githubusercontent.com/${MB_REPO}/${MB_REF}"
@@ -237,7 +238,7 @@ is_installed() { [ -f "$MANIFEST" ] && [ "$(mf_get STATUS)" = "complete" ]; }
 
 present_list() {
   local out="environment,agents" k
-  for k in rtk graft cbm claude_mem superpowers ecc vault wiring; do
+  for k in rtk graft cbm claude_mem superpowers ecc text_to_cad claude_code_setup vault wiring; do
     [ "$(mf_get "PRESENT_$k")" = 1 ] && out="$out,$(printf '%s' "$k" | tr '_' '-')"
   done
   printf '%s' "$out"
@@ -619,9 +620,10 @@ cmd_status() {
   echo "vault:     $(mf_get VAULT_DIR)"
   echo "sync:      ${SYNC_METHOD:-$(mf_get SYNC_METHOD)}  (last: $(cat "$MB_HOME/state/last-sync" 2>/dev/null || echo never))"
   local k
-  for k in rtk graft cbm claude_mem superpowers ecc; do
+  for k in rtk graft cbm claude_mem superpowers ecc claude_code_setup; do
     printf '  %-14s present=%s  managed-by-megabrain=%s\n' "$k" "$(mf_get "PRESENT_$k")" "$(mf_get "MANAGED_$k")"
   done
+  printf '  %-14s present=%s  Claude-managed=%s  Codex-managed=%s\n' "text-to-cad" "$(mf_get PRESENT_text_to_cad)" "$(mf_get MANAGED_text_to_cad_claude)" "$(mf_get MANAGED_text_to_cad_codex)"
 }
 
 cmd_sync() {
@@ -645,8 +647,15 @@ cmd_mark_installed() {
     grep -q '"id": "claude-mem@' <<<"$list"   && mf_put PRESENT_claude_mem 1
     grep -q '"id": "superpowers@' <<<"$list"  && mf_put PRESENT_superpowers 1
     grep -q '"id": "ecc@' <<<"$list"          && mf_put PRESENT_ecc 1
+    grep -q '"id": "claude-code-setup@' <<<"$list" && mf_put PRESENT_claude_code_setup 1
+    grep -q '"id": "text-to-cad@' <<<"$list" && mf_put PRESENT_text_to_cad 1
+  fi
+  if have codex; then
+    local codex_plugins; codex_plugins="$(codex plugin list --json 2>/dev/null)"
+    grep -q '"pluginId": "text-to-cad@' <<<"$codex_plugins" && mf_put PRESENT_text_to_cad 1
   fi
   mf_put MANAGED_claude_mem 0; mf_put MANAGED_superpowers 0; mf_put MANAGED_ecc 0
+  mf_put MANAGED_claude_code_setup 0; mf_put MANAGED_text_to_cad_claude 0; mf_put MANAGED_text_to_cad_codex 0
   if [ -d "$VAULT_DIR" ] && [ "$VAULT_DIR" != "$MB_HOME/vault" ]; then
     mf_put VAULT_DIR "$VAULT_DIR"; mf_put PRESENT_vault 1
   fi
@@ -702,6 +711,7 @@ preflight() {
 }
 
 plugin_present() { have claude && claude plugin list --json 2>/dev/null | grep -q "\"id\": \"$1\""; }
+codex_plugin_present() { have codex && codex plugin list --json 2>/dev/null | grep -q "\"pluginId\": \"$1\""; }
 
 install_plugin() { # install_plugin <key> <label> <marketplace-src> <plugin@marketplace> <mf-key>
   local key="$1" label="$2" src="$3" id="$4" mk="$5"
@@ -715,6 +725,54 @@ install_plugin() { # install_plugin <key> <label> <marketplace-src> <plugin@mark
     if run_logged claude plugin install "$id"; then
       ok "installed: $id"; mf_put "MANAGED_$mk" 1; mf_put "PRESENT_$mk" 1
     else fail "plugin $id"; fi
+  fi
+  S_end
+}
+
+install_claude_code_setup() {
+  local id="claude-code-setup@claude-plugins-official" key="claude-code-setup"
+  want "$key" || { S_skip "$key" "skipped (--skip/--only)"; return; }
+  if ! has_agent claude; then S_skip "$key" "Claude Code not detected"; return; fi
+  S_begin "$key" "Claude Code setup recommendations"
+  if [ "$DRY" = 0 ] && plugin_present "$id"; then
+    ok "already installed: $id"; mf_put MANAGED_claude_code_setup 0; mf_put PRESENT_claude_code_setup 1
+  else
+    run_logged claude plugin marketplace add anthropics/claude-plugins-official || true
+    if run_logged claude plugin install "$id"; then
+      ok "installed: $id"; mf_put MANAGED_claude_code_setup 1; mf_put PRESENT_claude_code_setup 1
+    else fail "plugin $id"; fi
+  fi
+  S_end
+}
+
+install_text_to_cad() {
+  local key="text-to-cad" id="text-to-cad@earthtojake" found=0
+  want "$key" || { S_skip "$key" "skipped (--skip/--only)"; return; }
+  has_agent claude && found=1
+  has_agent codex && found=1
+  if [ "$found" = 0 ]; then S_skip "$key" "Codex or Claude Code not detected"; return; fi
+  S_begin "$key" "text-to-cad (local CAD tools)"
+  if has_agent claude; then
+    if ! have claude; then fail "Claude Code CLI is unavailable"
+    elif [ "$DRY" = 0 ] && plugin_present "$id"; then
+      ok "already installed for Claude Code"; mf_put MANAGED_text_to_cad_claude 0; mf_put PRESENT_text_to_cad 1
+    else
+      run_logged claude plugin marketplace add earthtojake/text-to-cad#latest || true
+      if run_logged claude plugin install "$id"; then
+        ok "installed for Claude Code"; mf_put MANAGED_text_to_cad_claude 1; mf_put PRESENT_text_to_cad 1
+      else fail "text-to-cad for Claude Code"; fi
+    fi
+  fi
+  if has_agent codex; then
+    if ! have codex; then fail "Codex CLI is unavailable"
+    elif [ "$DRY" = 0 ] && codex_plugin_present "$id"; then
+      ok "already installed for Codex"; mf_put MANAGED_text_to_cad_codex 0; mf_put PRESENT_text_to_cad 1
+    else
+      run_logged codex plugin marketplace add earthtojake/text-to-cad --ref latest || true
+      if run_logged codex plugin add "$id"; then
+        ok "installed for Codex"; mf_put MANAGED_text_to_cad_codex 1; mf_put PRESENT_text_to_cad 1
+      else fail "text-to-cad for Codex"; fi
+    fi
   fi
   S_end
 }
@@ -818,10 +876,12 @@ do_install() {
     S_end
   else S_skip cbm "skipped (--skip/--only)"; fi
 
-  # plugins (Claude Code only)
+  # Plugins
   install_plugin claude-mem "claude-mem (persistent memory)" thedotmack/claude-mem claude-mem@thedotmack claude_mem
   install_plugin superpowers "superpowers (process skills)" anthropics/claude-plugins-official superpowers@claude-plugins-official superpowers
   install_plugin ecc "ECC (agents, skills, hooks)" https://github.com/affaan-m/ECC.git ecc@ecc ecc
+  install_text_to_cad
+  install_claude_code_setup
 
   # vault
   if want vault; then
@@ -984,7 +1044,7 @@ do_uninstall() {
 
   # plugins
   local pair key mk id extra rest
-  for pair in "claude-mem:claude_mem:claude-mem@thedotmack:--keep-data" "superpowers:superpowers:superpowers@claude-plugins-official:" "ecc:ecc:ecc@ecc:"; do
+  for pair in "claude-mem:claude_mem:claude-mem@thedotmack:--keep-data" "superpowers:superpowers:superpowers@claude-plugins-official:" "ecc:ecc:ecc@ecc:" "claude-code-setup:claude_code_setup:claude-code-setup@claude-plugins-official:"; do
     key="${pair%%:*}"; rest="${pair#*:}"; mk="${rest%%:*}"; rest="${rest#*:}"; id="${rest%%:*}"; extra="${rest#*:}"
     CUR="$key"; STEP_FAILED=0
     if [ "$(mf_get "MANAGED_$mk")" = 1 ] && have claude; then
@@ -994,6 +1054,18 @@ do_uninstall() {
       S_end
     else emit skip "$key" "not installed by MEGABRAIN (left untouched)"; fi
   done
+
+  CUR=text-to-cad; STEP_FAILED=0
+  if [ "$(mf_get MANAGED_text_to_cad_claude)" = 1 ] || [ "$(mf_get MANAGED_text_to_cad_codex)" = 1 ]; then
+    emit begin text-to-cad
+    if [ "$(mf_get MANAGED_text_to_cad_claude)" = 1 ] && have claude; then
+      run_logged claude plugin uninstall text-to-cad@earthtojake && ok "Claude Code plugin removed" || fail "text-to-cad Claude Code uninstall"
+    fi
+    if [ "$(mf_get MANAGED_text_to_cad_codex)" = 1 ] && have codex; then
+      run_logged codex plugin remove text-to-cad@earthtojake && ok "Codex plugin removed" || fail "text-to-cad Codex uninstall"
+    fi
+    S_end
+  else emit skip text-to-cad "not installed by MEGABRAIN (left untouched)"; fi
 
   # vault (your data: kept unless explicitly purged)
   CUR=vault; STEP_FAILED=0

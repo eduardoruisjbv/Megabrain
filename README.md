@@ -4,7 +4,7 @@
 
 **One command that gives every AI coding agent on your machine token-saving tools and a long-term memory vault.**
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue)
+![Version](https://img.shields.io/badge/version-1.0.2-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey)
 ![Shell](https://img.shields.io/badge/shell-bash-4EAA25)
@@ -76,6 +76,8 @@ bash install.sh --dry-run --no-anim   # exact list of steps it would run
 | [**claude-mem**](https://github.com/thedotmack/claude-mem) | Persistent memory across sessions | Claude Code |
 | [**superpowers**](https://github.com/anthropics/claude-plugins-official) | Process skills (brainstorming, debugging, planning…) | Claude Code |
 | [**ECC**](https://github.com/affaan-m/ECC) | Agents, skills and hooks (profile `standard`) | Claude Code |
+| [**text-to-cad**](https://github.com/earthtojake/text-to-cad) | Local CAD workflows and viewer for generating STEP, GLB, STL and 3MF models | Codex and Claude Code |
+| [**claude-code-setup**](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup) | Read-only, project-specific recommendations for Claude Code hooks, skills, MCP servers and agents | Claude Code |
 | **Memory vault** | Plain-Markdown vault (PARA layout), mirrored from your agents' memories every 48h | you |
 | [**Obsidian**](https://obsidian.md) *(optional)* | Visualize the vault as a graph | asked at the end |
 
@@ -121,7 +123,7 @@ what you want to do:
 
 ```
   MEGABRAIN already installed
-  v1.0.0 · installed 2026-10-13 · claude, codex
+  v1.0.2 · installed 2026-10-20 · claude, codex
   removes only what MEGABRAIN installed · your vault is kept
 
   Uninstall MEGABRAIN?   [ ○ Yes ]  [ ● No ]
@@ -151,7 +153,7 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
 |---|---|
 | `uninstall` · `status` · `sync` · `version` | subcommands |
 | `--agents a,b` | skip detection, use this list |
-| `--skip <item>` / `--only <item>` | `rtk graft cbm claude-mem superpowers ecc vault deps obsidian` |
+| `--skip <item>` / `--only <item>` | `rtk graft cbm claude-mem superpowers ecc text-to-cad claude-code-setup vault deps obsidian` |
 | `--obsidian yes\|no` | answer the Obsidian question without asking |
 | `--vault-dir <dir>` | vault location (default `~/.megabrain/vault`) |
 | `--language <lang>` | answer language for Claude Code |
@@ -173,6 +175,11 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
 - **Everything is logged** to `~/.megabrain/logs/` so you can audit exactly what ran.
 - **Third-party tools keep their own policies.** For example, graft ships with
   anonymous usage telemetry on; disable it with `graft telemetry disable`.
+- **text-to-cad telemetry:** cadgen sends anonymous usage statistics and crash
+  reports by default; disable them with `uvx cadgen telemetry off`. Its CAD
+  runtime is downloaded by `uv` the first time the plugin is used.
+- **Claude Code setup is read-only:** it recommends automations for the current
+  project and does not change project files.
 - Read the script before running it — it is one readable file: [`install.sh`](install.sh).
 
 ## Compatibility
@@ -186,8 +193,10 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
 | Windows | use WSL |
 | Immutable systems (rpm-ostree, NixOS) | system packages are not installed automatically; install `curl git nodejs` yourself |
 
-Requirements: `bash`, `curl`, `git`. `node`/`npm` are needed for graft and the Claude
-plugins; `python3` is only needed for the animation (plain text is used otherwise).
+Requirements: `bash`, `curl`, `git`. `node`/`npm` are needed for graft and Claude
+plugins; the corresponding Codex or Claude Code CLI is needed for its plugins.
+`uv` downloads text-to-cad's CAD runtime on first use. `python3` is only needed
+for the animation (plain text is used otherwise).
 Missing dependencies are installed through your package manager after asking.
 
 ## How it works
@@ -209,7 +218,7 @@ a manifest tracks what it owns. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.m
 
 [Semantic Versioning](https://semver.org). The version lives in [`VERSION`](VERSION),
 every release is tagged `vX.Y.Z`, and changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
-Pin a version with `MEGABRAIN_REF=v1.0.1`.
+Pin a version with `MEGABRAIN_REF=v1.0.2`.
 
 ## Credits
 
@@ -218,7 +227,10 @@ MEGABRAIN stands on the shoulders of [RTK](https://github.com/rtk-ai/rtk),
 [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp),
 [claude-mem](https://github.com/thedotmack/claude-mem),
 [superpowers](https://github.com/anthropics/claude-plugins-official),
-[ECC](https://github.com/affaan-m/ECC) and [Obsidian](https://obsidian.md).
+[ECC](https://github.com/affaan-m/ECC),
+[text-to-cad](https://github.com/earthtojake/text-to-cad),
+[claude-code-setup](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup)
+and [Obsidian](https://obsidian.md).
 It only orchestrates their official installers; all credit belongs to their authors.
 
 ## License

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-20
+
+### Added
+- Install text-to-cad for detected Codex and Claude Code clients, track ownership
+  independently per client, and remove only copies installed by MEGABRAIN.
+- Install Anthropic's read-only claude-code-setup recommendations plugin for
+  detected Claude Code clients.
+- Document text-to-cad's first-use CAD runtime download and telemetry controls.
+
 ## [1.0.1] - 2026-10-13
 
 ### Changed
@@ -46,6 +55,7 @@ First public release.
   installing or writing anything.
 - Linux (apt, dnf, yum, pacman, zypper, apk, xbps), macOS (Homebrew) and WSL support.
 
-[Unreleased]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/eduardoruisjbv/Megabrain/releases/tag/v1.0.0

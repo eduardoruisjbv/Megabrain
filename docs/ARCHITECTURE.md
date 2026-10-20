@@ -18,7 +18,7 @@ install.sh
  ├─ pre-flight: curl/git/node/npm            (plain text, may ask for sudo)
  ├─ start lib/ui.py                          (if TTY + python3; otherwise plain mode)
  ├─ steps: environment → agents → rtk → graft → cbm → claude-mem → superpowers
- │         → ecc → vault → wiring
+ │         → ecc → text-to-cad → claude-code-setup → vault → wiring
  ├─ optional: Obsidian question
  └─ final screen + plain summary
 
@@ -66,6 +66,7 @@ the terminal.
 | `PRESENT_<item>` | the item exists on the machine |
 | `MANAGED_<item>` | MEGABRAIN installed it, so MEGABRAIN may remove it |
 | `MCPADD_graft_<agent>` | MEGABRAIN registered the graft MCP server for that agent |
+| `MANAGED_text_to_cad_<agent>` | MEGABRAIN installed text-to-cad for `claude` or `codex` |
 
 ## Safety invariants
 
@@ -76,12 +77,15 @@ the terminal.
    files (`MAPA.md` and `.obsidian/`).
 3. **Existing config is never overwritten.** `settings.json` is backed up first and
    vault seed files are written only if missing.
-4. **No data leaves the machine.** The installer downloads public installers and
-   packages; it uploads nothing.
+4. **The installer does not upload user data.** It downloads public installers
+   and packages. Third-party tools can have their own telemetry policies; the
+   README documents text-to-cad's default telemetry and opt-out command.
 5. **Existence checks only.** Agent detection checks that commands/folders exist; it
    never reads their contents.
 6. **Protected tool uninstallers run non-destructively.** `codebase-memory-mcp
    uninstall` is invoked with `-n` so that your code indexes are kept.
+7. **Plugin ownership is tracked per agent.** Uninstall removes text-to-cad from
+   Codex and Claude Code only when MEGABRAIN installed that copy.
 
 ## Extending
 
