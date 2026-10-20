@@ -17,8 +17,9 @@ install.sh
  ├─ detect OS, package manager, agents      (existence checks only)
  ├─ pre-flight: curl/git/node/npm            (plain text, may ask for sudo)
  ├─ start lib/ui.py                          (if TTY + python3; otherwise plain mode)
- ├─ steps: environment → agents → rtk → graft → cbm → claude-mem → superpowers
- │         → ecc → text-to-cad → claude-code-setup → vault → wiring
+ ├─ steps: environment → agents → rtk → graft → cbm → rea → claude-mem
+ │         → superpowers → ecc → text-to-cad
+ │         → claude-code-setup → vault → wiring
  ├─ optional: Obsidian question
  └─ final screen + plain summary
 
@@ -67,6 +68,8 @@ the terminal.
 | `MANAGED_<item>` | MEGABRAIN installed it, so MEGABRAIN may remove it |
 | `MCPADD_graft_<agent>` | MEGABRAIN registered the graft MCP server for that agent |
 | `MANAGED_text_to_cad_<agent>` | MEGABRAIN installed text-to-cad for `claude` or `codex` |
+| `MANAGED_rea_cli` | MEGABRAIN installed the REA CLI package |
+| `MANAGED_rea_setup` | MEGABRAIN configured REA registrations and skill; uninstall may run `rea uninstall` |
 
 ## Safety invariants
 
@@ -86,6 +89,9 @@ the terminal.
    uninstall` is invoked with `-n` so that your code indexes are kept.
 7. **Plugin ownership is tracked per agent.** Uninstall removes text-to-cad from
    Codex and Claude Code only when MEGABRAIN installed that copy.
+8. **REA setup is ownership-aware.** Existing REA registrations or skill are
+   preserved. For MEGABRAIN-managed setup, uninstall runs `rea uninstall` without
+   data-purge options; it never installs Hopper.
 
 ## Extending
 

@@ -4,8 +4,8 @@
 #
 # Detects the coding agents installed on this machine (Claude Code, Codex,
 # Gemini, Cursor, ...) and sets up a token-saving + memory stack for all of
-# them: RTK, graft, codebase-memory-mcp, text-to-cad for Codex and Claude Code,
-# and Claude Code plugins for claude-mem, superpowers, ECC and setup guidance.
+# them: RTK, graft, codebase-memory-mcp, REA, text-to-cad for Codex and Claude
+# Code, plus Claude Code plugins for claude-mem, superpowers, ECC and setup guidance.
 # Always creates a plain-Markdown memory vault
 # (a backup that works with or without Obsidian) and then offers Obsidian.
 #
@@ -23,7 +23,7 @@
 #
 # Options:
 #   --agents a,b,c       skip detection and use this list (e.g. claude,codex)
-#   --skip <item>        skip: rtk graft cbm claude-mem superpowers ecc text-to-cad claude-code-setup vault deps obsidian
+#   --skip <item>        skip: rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup vault deps obsidian
 #   --only <item>        install only this item (repeatable)
 #   --language <lang>    answer language for Claude Code (default: unchanged)
 #   --vault-dir <dir>    vault location (default: ~/.megabrain/vault, hidden)
@@ -238,7 +238,7 @@ is_installed() { [ -f "$MANIFEST" ] && [ "$(mf_get STATUS)" = "complete" ]; }
 
 present_list() {
   local out="environment,agents" k
-  for k in rtk graft cbm claude_mem superpowers ecc text_to_cad claude_code_setup vault wiring; do
+  for k in rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc text_to_cad claude_code_setup vault wiring; do
     [ "$(mf_get "PRESENT_$k")" = 1 ] && out="$out,$(printf '%s' "$k" | tr '_' '-')"
   done
   printf '%s' "$out"
@@ -620,7 +620,7 @@ cmd_status() {
   echo "vault:     $(mf_get VAULT_DIR)"
   echo "sync:      ${SYNC_METHOD:-$(mf_get SYNC_METHOD)}  (last: $(cat "$MB_HOME/state/last-sync" 2>/dev/null || echo never))"
   local k
-  for k in rtk graft cbm claude_mem superpowers ecc claude_code_setup; do
+  for k in rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc claude_code_setup; do
     printf '  %-14s present=%s  managed-by-megabrain=%s\n' "$k" "$(mf_get "PRESENT_$k")" "$(mf_get "MANAGED_$k")"
   done
   printf '  %-14s present=%s  Claude-managed=%s  Codex-managed=%s\n' "text-to-cad" "$(mf_get PRESENT_text_to_cad)" "$(mf_get MANAGED_text_to_cad_claude)" "$(mf_get MANAGED_text_to_cad_codex)"
@@ -654,6 +654,12 @@ cmd_mark_installed() {
     local codex_plugins; codex_plugins="$(codex plugin list --json 2>/dev/null)"
     grep -q '"pluginId": "text-to-cad@' <<<"$codex_plugins" && mf_put PRESENT_text_to_cad 1
   fi
+  if have rea; then
+    mf_put PRESENT_rea_cli 1; mf_put MANAGED_rea_cli 0
+    rea_setup_present && { mf_put PRESENT_rea_setup 1; mf_put MANAGED_rea_setup 0; }
+  else
+    mf_put MANAGED_rea_cli 0; mf_put MANAGED_rea_setup 0
+  fi
   mf_put MANAGED_claude_mem 0; mf_put MANAGED_superpowers 0; mf_put MANAGED_ecc 0
   mf_put MANAGED_claude_code_setup 0; mf_put MANAGED_text_to_cad_claude 0; mf_put MANAGED_text_to_cad_codex 0
   if [ -d "$VAULT_DIR" ] && [ "$VAULT_DIR" != "$MB_HOME/vault" ]; then
@@ -681,9 +687,9 @@ preflight() {
 
   local need="" x
   for x in curl git; do have "$x" || need="$need $x"; done
-  if want graft || want claude-mem || want superpowers || want ecc || [ -n "$LANGUAGE" ]; then
+  if want graft || want rea || want claude-mem || want superpowers || want ecc || [ -n "$LANGUAGE" ]; then
     have node || need="$need node"
-    have npm || { want graft && need="$need npm"; }
+    if want graft || want rea; then have npm || need="$need npm"; fi
   fi
   need="${need# }"
   if [ -n "$need" ]; then
@@ -712,6 +718,20 @@ preflight() {
 
 plugin_present() { have claude && claude plugin list --json 2>/dev/null | grep -q "\"id\": \"$1\""; }
 codex_plugin_present() { have codex && codex plugin list --json 2>/dev/null | grep -q "\"pluginId\": \"$1\""; }
+
+rea_setup_present() {
+  have rea || return 1
+  local report
+  report="$(rea doctor --json 2>/dev/null)" || true
+  [ -n "$report" ] || return 0
+  node -e 'try {
+    const d=JSON.parse(process.argv[1]);
+    const present=s=>typeof s==="string" && s!=="missing";
+    const registration=Array.isArray(d.registrations) && d.registrations.some(x=>present(x.state));
+    const skill=d.skill && present(d.skill.state);
+    process.exit(registration || skill ? 0 : 1);
+  } catch (_) { process.exit(0); }' "$report"
+}
 
 install_plugin() { # install_plugin <key> <label> <marketplace-src> <plugin@marketplace> <mf-key>
   local key="$1" label="$2" src="$3" id="$4" mk="$5"
@@ -772,6 +792,39 @@ install_text_to_cad() {
       if run_logged codex plugin add "$id"; then
         ok "installed for Codex"; mf_put MANAGED_text_to_cad_codex 1; mf_put PRESENT_text_to_cad 1
       else fail "text-to-cad for Codex"; fi
+    fi
+  fi
+  S_end
+}
+
+install_rea() {
+  local key=rea setup_existed=0
+  want "$key" || { S_skip "$key" "skipped (--skip/--only)"; return; }
+  S_begin "$key" "REA (reverse engineering tools)"
+  if have rea; then
+    ok "already installed: $(rea --version 2>/dev/null | tr -d '[:space:]')"
+    mf_put MANAGED_rea_cli 0; mf_put PRESENT_rea_cli 1
+    if rea_setup_present; then setup_existed=1; fi
+  elif have npm || [ "$DRY" = 1 ]; then
+    if run_logged npm install -g rea-agents; then
+      ok "CLI installed"; hash -r; mf_put MANAGED_rea_cli 1; mf_put PRESENT_rea_cli 1
+    else fail "npm install -g rea-agents"; fi
+  else fail "REA needs npm"; fi
+
+  if [ "$DRY" = 1 ]; then
+    run_logged rea setup --yes --all-detected
+  elif have rea; then
+    if [ "$setup_existed" = 1 ]; then
+      ok "existing REA registrations and skills left unchanged"
+      mf_put PRESENT_rea_setup 1; mf_put MANAGED_rea_setup 0
+      # Keep a newly installed CLI if pre-existing configs depend on it.
+      mf_put MANAGED_rea_cli 0
+    else
+      mf_put MANAGED_rea_setup 1
+      if run_logged rea setup --yes --all-detected; then
+        ok "REA integrations and skill configured for detected clients"
+        mf_put PRESENT_rea_setup 1; mf_put MANAGED_rea_setup 1
+      else fail "rea setup"; fi
     fi
   fi
   S_end
@@ -877,6 +930,7 @@ do_install() {
   else S_skip cbm "skipped (--skip/--only)"; fi
 
   # Plugins
+  install_rea
   install_plugin claude-mem "claude-mem (persistent memory)" thedotmack/claude-mem claude-mem@thedotmack claude_mem
   install_plugin superpowers "superpowers (process skills)" anthropics/claude-plugins-official superpowers@claude-plugins-official superpowers
   install_plugin ecc "ECC (agents, skills, hooks)" https://github.com/affaan-m/ECC.git ecc@ecc ecc
@@ -1041,6 +1095,33 @@ do_uninstall() {
     ok "your indexes were kept"
     S_end
   else emit skip cbm "not installed by MEGABRAIN (left untouched)"; fi
+
+  # REA integrations (only when this installation configured them)
+  CUR=rea; STEP_FAILED=0
+  if [ "$(mf_get MANAGED_rea_setup)" = 1 ]; then
+    emit begin rea
+    if have rea; then
+      if run_logged rea uninstall; then
+        ok "REA registrations and skill removed; REA data kept"
+        mf_put MANAGED_rea_setup 0
+        if [ "$(mf_get MANAGED_rea_cli)" = 1 ] && have npm; then
+          if run_logged npm uninstall -g rea-agents; then ok "REA CLI removed"; mf_put MANAGED_rea_cli 0
+          else fail "npm uninstall -g rea-agents"; fi
+        fi
+      else
+        fail "rea uninstall; REA CLI kept so existing integrations can still work"
+      fi
+    else
+      warn "REA CLI is missing; its configured integration state could not be cleaned up"
+      fail "REA uninstall unavailable"
+    fi
+    S_end
+  elif [ "$(mf_get MANAGED_rea_cli)" = 1 ]; then
+    emit begin rea
+    if have npm && run_logged npm uninstall -g rea-agents; then ok "REA CLI removed"
+    else fail "npm uninstall -g rea-agents"; fi
+    S_end
+  else emit skip rea "not installed by MEGABRAIN (left untouched)"; fi
 
   # plugins
   local pair key mk id extra rest

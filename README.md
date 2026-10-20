@@ -78,6 +78,7 @@ bash install.sh --dry-run --no-anim   # exact list of steps it would run
 | [**ECC**](https://github.com/affaan-m/ECC) | Agents, skills and hooks (profile `standard`) | Claude Code |
 | [**text-to-cad**](https://github.com/earthtojake/text-to-cad) | Local CAD workflows and viewer for generating STEP, GLB, STL and 3MF models | Codex and Claude Code |
 | [**claude-code-setup**](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup) | Read-only, project-specific recommendations for Claude Code hooks, skills, MCP servers and agents | Claude Code |
+| [**REA**](https://github.com/morluto/rea) | Reverse engineering workflows, MCP registrations and agent skill | detected supported agents (including Codex, Claude Code and Claude Desktop) |
 | **Memory vault** | Plain-Markdown vault (PARA layout), mirrored from your agents' memories every 48h | you |
 | [**Obsidian**](https://obsidian.md) *(optional)* | Visualize the vault as a graph | asked at the end |
 
@@ -153,7 +154,7 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
 |---|---|
 | `uninstall` · `status` · `sync` · `version` | subcommands |
 | `--agents a,b` | skip detection, use this list |
-| `--skip <item>` / `--only <item>` | `rtk graft cbm claude-mem superpowers ecc text-to-cad claude-code-setup vault deps obsidian` |
+| `--skip <item>` / `--only <item>` | `rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup vault deps obsidian` |
 | `--obsidian yes\|no` | answer the Obsidian question without asking |
 | `--vault-dir <dir>` | vault location (default `~/.megabrain/vault`) |
 | `--language <lang>` | answer language for Claude Code |
@@ -180,6 +181,10 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
   runtime is downloaded by `uv` the first time the plugin is used.
 - **Claude Code setup is read-only:** it recommends automations for the current
   project and does not change project files.
+- **REA setup:** after the MEGABRAIN confirmation, `rea setup --yes --all-detected`
+  configures detected supported clients. MEGABRAIN does not install Hopper. On
+  uninstall, `rea uninstall` runs only if MEGABRAIN configured REA; pre-existing
+  REA registrations and skills are left untouched, and REA data is kept.
 - Read the script before running it — it is one readable file: [`install.sh`](install.sh).
 
 ## Compatibility
@@ -193,8 +198,8 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
 | Windows | use WSL |
 | Immutable systems (rpm-ostree, NixOS) | system packages are not installed automatically; install `curl git nodejs` yourself |
 
-Requirements: `bash`, `curl`, `git`. `node`/`npm` are needed for graft and Claude
-plugins; the corresponding Codex or Claude Code CLI is needed for its plugins.
+Requirements: `bash`, `curl`, `git`. `node`/`npm` are needed for graft, REA and
+Claude plugins; the corresponding Codex or Claude Code CLI is needed for its plugins.
 `uv` downloads text-to-cad's CAD runtime on first use. `python3` is only needed
 for the animation (plain text is used otherwise).
 Missing dependencies are installed through your package manager after asking.
@@ -229,8 +234,8 @@ MEGABRAIN stands on the shoulders of [RTK](https://github.com/rtk-ai/rtk),
 [superpowers](https://github.com/anthropics/claude-plugins-official),
 [ECC](https://github.com/affaan-m/ECC),
 [text-to-cad](https://github.com/earthtojake/text-to-cad),
-[claude-code-setup](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup)
-and [Obsidian](https://obsidian.md).
+[claude-code-setup](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup),
+[REA](https://github.com/morluto/rea), and [Obsidian](https://obsidian.md).
 It only orchestrates their official installers; all credit belongs to their authors.
 
 ## License

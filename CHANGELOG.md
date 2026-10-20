@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Install Anthropic's read-only claude-code-setup recommendations plugin for
   detected Claude Code clients.
 - Document text-to-cad's first-use CAD runtime download and telemetry controls.
+- Install REA for detected supported clients, track whether MEGABRAIN owns its
+  CLI and setup separately, and preserve pre-existing REA configuration on uninstall.
 
 ## [1.0.1] - 2026-10-13
 

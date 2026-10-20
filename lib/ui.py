@@ -48,6 +48,7 @@ INSTALL_STEPS = [
     ("rtk", "RTK", "token-optimized command proxy"),
     ("graft", "graft", "repository context graph"),
     ("cbm", "codebase-memory", "structural graph · sqlite engine"),
+    ("rea", "REA", "reverse engineering tools · MCP + agent skill"),
     ("claude-mem", "claude-mem", "persistent memory · worker + vector store"),
     ("superpowers", "superpowers", "process skills pack"),
     ("ecc", "ECC", "agents, skills and hooks · profile standard"),
@@ -61,6 +62,7 @@ UNINSTALL_STEPS = [
     ("rtk", "RTK", "removing hooks and binary"),
     ("graft", "graft", "removing MCP server and package"),
     ("cbm", "codebase-memory", "removing binary and agent configs"),
+    ("rea", "REA", "removing MEGABRAIN-managed registrations and skill"),
     ("claude-mem", "claude-mem", "removing plugin (data kept)"),
     ("superpowers", "superpowers", "removing plugin"),
     ("ecc", "ECC", "removing plugin"),
@@ -430,6 +432,7 @@ class DemoSource(object):
             ("rtk", 2.3, [(0.3, "fetching rtk binary"), (0.6, "installing to ~/.local/bin/rtk"), (0.85, "rtk init -g: hooks registered")]),
             ("graft", 2.8, [(0.3, "npm install -g @nanonets/graft"), (0.6, "mcp server graft registered"), (0.85, "statusline + hooks ready")]),
             ("cbm", 3.2, [(0.3, "fetching codebase-memory-mcp"), (0.6, "verifying checksum: ok"), (0.85, "hook-augment wired for detected clients")]),
+            ("rea", 2.4, [(0.3, "installing rea-agents CLI if needed"), (0.65, "configuring detected clients"), (0.9, "MCP registrations and skill ready")]),
             ("claude-mem", 2.8, [(0.3, "adding marketplace thedotmack/claude-mem"), (0.6, "starting worker and vector store"), (0.85, "memory database initialized (empty)")]),
             ("superpowers", 1.8, [(0.4, "adding marketplace claude-plugins-official"), (0.85, "plugin superpowers enabled")]),
             ("ecc", 2.6, [(0.3, "adding marketplace affaan-m/ECC"), (0.6, "resolving agents and skills"), (0.85, "hook profile: standard")]),
@@ -467,7 +470,7 @@ class DemoSource(object):
     def _installed(self):
         yield ("emit", ["mode", "installed"])
         yield ("emit", ["meta", "present",
-                        "environment,agents,rtk,graft,cbm,claude-mem,superpowers,ecc,text-to-cad,claude-code-setup,vault,wiring"])
+                        "environment,agents,rtk,graft,cbm,rea,claude-mem,superpowers,ecc,text-to-cad,claude-code-setup,vault,wiring"])
         yes = yield ("ask", ["uninstall", "MEGABRAIN already installed",
                              "v1.0.2 · installed 2026-10-20 · " + ", ".join(self.agents),
                              "removes only what MEGABRAIN installed · vault is kept",
@@ -482,6 +485,7 @@ class DemoSource(object):
             ("rtk", 1.8, [(0.4, "rtk init --uninstall: claude"), (0.8, "binary removed")]),
             ("graft", 1.8, [(0.4, "mcp server removed"), (0.8, "npm uninstall -g @nanonets/graft")]),
             ("cbm", 1.8, [(0.5, "agent configs removed"), (0.8, "indexes kept")]),
+            ("rea", 1.6, [(0.4, "managed registrations and skill removed"), (0.8, "REA data kept")]),
             ("claude-mem", 1.6, [(0.5, "plugin removed (data kept)")]),
             ("superpowers", 1.2, [(0.5, "plugin removed")]),
             ("ecc", 1.4, [(0.5, "plugin removed")]),
