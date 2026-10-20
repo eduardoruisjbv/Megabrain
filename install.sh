@@ -822,7 +822,7 @@ install_text_to_cad() {
   if [ "$found" = 0 ]; then S_skip "$key" "Codex or Claude Code not detected"; return; fi
   S_begin "$key" "text-to-cad (local CAD tools)"
   if has_agent claude; then
-    if ! have claude; then fail "Claude Code CLI is unavailable"
+      if [ "$DRY" = 0 ] && ! have claude; then fail "Claude Code CLI is unavailable"
     elif [ "$DRY" = 0 ] && plugin_present "$id"; then
       ok "already installed for Claude Code"; mf_put MANAGED_text_to_cad_claude 0; mf_put PRESENT_text_to_cad 1
     else
@@ -833,7 +833,7 @@ install_text_to_cad() {
     fi
   fi
   if has_agent codex; then
-    if ! have codex; then fail "Codex CLI is unavailable"
+      if [ "$DRY" = 0 ] && ! have codex; then fail "Codex CLI is unavailable"
     elif [ "$DRY" = 0 ] && codex_plugin_present "$id"; then
       ok "already installed for Codex"; mf_put MANAGED_text_to_cad_codex 0; mf_put PRESENT_text_to_cad 1
     else

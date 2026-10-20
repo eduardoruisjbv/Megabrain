@@ -39,7 +39,7 @@ jobs:
 
       - name: Installer dry-run (changes nothing)
         run: |
-          bash install.sh --dry-run --no-anim -y --agents claude --skip deps
+          bash install.sh --dry-run --no-anim -y --agents claude,codex --skip deps
           test ! -e "$HOME/.megabrain"
           bash install.sh --dry-run --no-anim -y --agents codex --only mac-agent --only firecrawl --skip deps
           test ! -e "$HOME/.megabrain"

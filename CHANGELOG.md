@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ledger that survives forced/selected reinstalls and preserves later user edits.
 - Add offline ownership/rollback tests and CI coverage for the skill installer.
 
+### Fixed
+- Allow CAD installation dry-runs with explicit agent overrides even when those
+  agent commands are not installed, matching the rest of the simulated workflow.
+
 ## [1.0.2] - 2026-10-20
 
 ### Added
