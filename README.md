@@ -218,7 +218,7 @@ a manifest tracks what it owns. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.m
 
 [Semantic Versioning](https://semver.org). The version lives in [`VERSION`](VERSION),
 every release is tagged `vX.Y.Z`, and changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
-Pin a version with `MEGABRAIN_REF=v1.0.2`.
+Pin the latest published release with `MEGABRAIN_REF=v1.0.1`.
 
 ## Credits
 
