@@ -9,7 +9,7 @@
 # Always creates a plain-Markdown memory vault
 # (a backup that works with or without Obsidian) and then offers Obsidian.
 #
-# Privacy: nothing is read from or copied between machines. The script only
+# Privacy: no private state is imported from another machine. The script only
 # checks that agent commands/folders EXIST, installs public tools and lets each
 # one generate its own configuration. No history, memories, tokens or personal
 # paths are ever included.
@@ -19,18 +19,19 @@
 #   bash install.sh uninstall        remove what MEGABRAIN installed
 #   bash install.sh status           show what is installed
 #   bash install.sh sync             refresh the memory vault now
+#   megabrain mac --help              run persistent Codex/Claude jobs on your Mac
 #   bash install.sh --list-agents    show detected agents and exit
 #
 # Options:
 #   --agents a,b,c       skip detection and use this list (e.g. claude,codex)
-#   --skip <item>        skip: rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup vault deps obsidian
+#   --skip <item>        skip: rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red skills-auto vault deps obsidian
 #   --only <item>        install only this item (repeatable)
 #   --language <lang>    answer language for Claude Code (default: unchanged)
 #   --vault-dir <dir>    vault location (default: ~/.megabrain/vault, hidden)
 #   --obsidian yes|no    answer the Obsidian question without asking
 #   --purge-vault        uninstall: also delete the memory vault
 #   --force              install even if MEGABRAIN is already installed
-#   --no-deps            do not install curl/git/node/npm with the package manager
+#   --no-deps            do not install system dependencies or bootstrap uv
 #   --no-anim            plain text output (no animation)
 #   --dry-run            show what would happen, change nothing
 #   -y, --yes            do not ask for confirmation
@@ -66,6 +67,10 @@ CMD="install"; DRY=0; YES=0; FORCE=0; NO_ANIM=0; LIST_ONLY=0; PURGE_VAULT=0
 LANGUAGE=""; AGENTS_OVERRIDE=""; OBSIDIAN_MODE="ask"; SKIP=" "; ONLY=" "
 VAULT_DIR="${MEGABRAIN_VAULT:-$MB_HOME/vault}"
 
+MAC_ARGS=()
+if [ "${1:-}" = mac ]; then
+  CMD=mac; shift; MAC_ARGS=("$@"); set --
+fi
 if [ $# -gt 0 ]; then
   case "$1" in
     install|uninstall|status|sync|version|help|mark-installed) CMD="$1"; shift ;;
@@ -103,7 +108,7 @@ want() { # want <item>
 }
 
 # ---------- logging / UI plumbing ----------
-UI_ON=0; UI_PID=""; EV=""; ANS=""; LIB_DIR=""; CUR=""; STEP_FAILED=0
+UI_ON=0; UI_PID=""; EV=""; ANS=""; LIB_DIR=""; SKILLS_LIB=""; INTEGRATIONS_LIB=""; CUR=""; STEP_FAILED=0
 FAILED=""; LOGFILE="/dev/null"; PATH_ADDED=0
 
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -225,6 +230,39 @@ ensure_lib() { # find (or download) ui.py + brain_energize.py
   rm -rf "$tmp"; return 1
 }
 
+ensure_skills_lib() {
+  local d tmp
+  for d in "$SELF_DIR/lib" "$SELF_DIR" "$LIB_DIR" "$MB_HOME/lib"; do
+    if [ -n "$d" ] && [ -f "$d/skills.py" ]; then SKILLS_LIB="$d/skills.py"; return 0; fi
+  done
+  have curl || return 1
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/megabrain-skills-lib.XXXXXX")" || return 1
+  if curl -fsSL --max-time 30 "$MB_RAW/lib/skills.py" -o "$tmp/skills.py" >>"$LOGFILE" 2>&1; then
+    SKILLS_LIB="$tmp/skills.py"; return 0
+  fi
+  rm -rf "$tmp"; return 1
+}
+
+ensure_integrations_lib() {
+  local d tmp name complete
+  for d in "$SELF_DIR/lib" "$SELF_DIR" "$MB_HOME/lib"; do
+    [ -n "$d" ] || continue
+    complete=1
+    for name in integrations.py skills.py mac_agent.py mac_worker.py; do
+      [ -f "$d/$name" ] || complete=0
+    done
+    if [ "$complete" = 1 ]; then INTEGRATIONS_LIB="$d/integrations.py"; SKILLS_LIB="$d/skills.py"; return 0; fi
+  done
+  have curl || return 1
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/megabrain-integrations-lib.XXXXXX")" || return 1
+  for name in integrations.py skills.py mac_agent.py mac_worker.py; do
+    if ! curl -fsSL --max-time 30 "$MB_RAW/lib/$name" -o "$tmp/$name" >>"$LOGFILE" 2>&1; then
+      rm -rf "$tmp"; return 1
+    fi
+  done
+  INTEGRATIONS_LIB="$tmp/integrations.py"; SKILLS_LIB="$tmp/skills.py"
+}
+
 # ---------- manifest (how MEGABRAIN knows it is installed) ----------
 mf_get() { [ -f "$MANIFEST" ] || return 0; sed -n "s/^$1=//p" "$MANIFEST" | head -1 | sed 's/^"//; s/"$//'; }
 mf_put() { # mf_put KEY VALUE
@@ -238,7 +276,7 @@ is_installed() { [ -f "$MANIFEST" ] && [ "$(mf_get STATUS)" = "complete" ]; }
 
 present_list() {
   local out="environment,agents" k
-  for k in rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc text_to_cad claude_code_setup vault wiring; do
+  for k in rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc text_to_cad claude_code_setup playwright firecrawl mimic open_code_review mac_agent security_audit claude_red skills_auto vault wiring; do
     [ "$(mf_get "PRESENT_$k")" = 1 ] && out="$out,$(printf '%s' "$k" | tr '_' '-')"
   done
   printf '%s' "$out"
@@ -292,11 +330,12 @@ detect_agents() {
 }
 has_agent() { [[ " $DETECTED " == *" $1 "* ]]; }
 
-install_pkgs() { # generic names: curl git node npm
+install_pkgs() { # generic names: curl git node npm python3
   local real="" x
   for x in "$@"; do
     case "$PM:$x" in
       brew:npm|xbps-install:npm) ;;
+      pacman:python3) real="$real python" ;;
       *:node) real="$real nodejs" ;;
       *) real="$real $x" ;;
     esac
@@ -574,6 +613,13 @@ install_cli() { # keep a copy so `megabrain` works from anywhere
   local dest="$MB_HOME/lib"
   mkdir -p "$dest" "$HOME/.local/bin"
   [ -n "$LIB_DIR" ] && cp "$LIB_DIR/ui.py" "$LIB_DIR/brain_energize.py" "$dest/"
+  [ -n "$SKILLS_LIB" ] && [ "$SKILLS_LIB" != "$dest/skills.py" ] && cp "$SKILLS_LIB" "$dest/skills.py"
+  if [ -n "$INTEGRATIONS_LIB" ]; then
+    local source name; source="$(dirname "$INTEGRATIONS_LIB")"
+    for name in integrations.py mac_agent.py mac_worker.py; do
+      [ "$source/$name" = "$dest/$name" ] || cp "$source/$name" "$dest/$name"
+    done
+  fi
   if [ -n "$SELF" ] && [ -f "$SELF" ]; then cp "$SELF" "$dest/install.sh"
   else curl -fsSL --max-time 30 "$MB_RAW/install.sh" -o "$dest/install.sh" || return 1; fi
   printf '%s\n' "$MB_VERSION" > "$dest/VERSION"
@@ -610,7 +656,7 @@ obsidian_run() {
 }
 
 # ---------- commands ----------
-cmd_help() { sed -n '2,45p' "${SELF:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
+cmd_help() { sed -n '2,/^set -uo pipefail/p' "${SELF:-$0}" 2>/dev/null | sed '$d; s/^# \{0,1\}//'; }
 
 cmd_status() {
   if [ ! -f "$MANIFEST" ]; then echo "MEGABRAIN is not installed on this machine."; return 1; fi
@@ -620,7 +666,7 @@ cmd_status() {
   echo "vault:     $(mf_get VAULT_DIR)"
   echo "sync:      ${SYNC_METHOD:-$(mf_get SYNC_METHOD)}  (last: $(cat "$MB_HOME/state/last-sync" 2>/dev/null || echo never))"
   local k
-  for k in rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc claude_code_setup; do
+  for k in rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc claude_code_setup playwright firecrawl mimic open_code_review mac_agent security_audit claude_red skills_auto; do
     printf '  %-14s present=%s  managed-by-megabrain=%s\n' "$k" "$(mf_get "PRESENT_$k")" "$(mf_get "MANAGED_$k")"
   done
   printf '  %-14s present=%s  Claude-managed=%s  Codex-managed=%s\n' "text-to-cad" "$(mf_get PRESENT_text_to_cad)" "$(mf_get MANAGED_text_to_cad_claude)" "$(mf_get MANAGED_text_to_cad_codex)"
@@ -687,9 +733,12 @@ preflight() {
 
   local need="" x
   for x in curl git; do have "$x" || need="$need $x"; done
-  if want graft || want rea || want claude-mem || want superpowers || want ecc || [ -n "$LANGUAGE" ]; then
+  if { has_agent claude || has_agent codex; } && { want security-audit || want claude-red || want skills-auto || want playwright || want firecrawl || want mimic || want open-code-review || want mac-agent; }; then
+    have python3 || need="$need python3"
+  fi
+  if want graft || want rea || want claude-mem || want superpowers || want ecc || want playwright || want open-code-review || [ -n "$LANGUAGE" ]; then
     have node || need="$need node"
-    if want graft || want rea; then have npm || need="$need npm"; fi
+    if want graft || want rea || want playwright || want open-code-review; then have npm || need="$need npm"; fi
   fi
   need="${need# }"
   if [ -n "$need" ]; then
@@ -773,7 +822,7 @@ install_text_to_cad() {
   if [ "$found" = 0 ]; then S_skip "$key" "Codex or Claude Code not detected"; return; fi
   S_begin "$key" "text-to-cad (local CAD tools)"
   if has_agent claude; then
-    if ! have claude; then fail "Claude Code CLI is unavailable"
+      if [ "$DRY" = 0 ] && ! have claude; then fail "Claude Code CLI is unavailable"
     elif [ "$DRY" = 0 ] && plugin_present "$id"; then
       ok "already installed for Claude Code"; mf_put MANAGED_text_to_cad_claude 0; mf_put PRESENT_text_to_cad 1
     else
@@ -784,7 +833,7 @@ install_text_to_cad() {
     fi
   fi
   if has_agent codex; then
-    if ! have codex; then fail "Codex CLI is unavailable"
+      if [ "$DRY" = 0 ] && ! have codex; then fail "Codex CLI is unavailable"
     elif [ "$DRY" = 0 ] && codex_plugin_present "$id"; then
       ok "already installed for Codex"; mf_put MANAGED_text_to_cad_codex 0; mf_put PRESENT_text_to_cad 1
     else
@@ -830,11 +879,55 @@ install_rea() {
   S_end
 }
 
+install_integration() {
+  local key="$1" label="$2" mk="${1//-/_}" managed=0
+  want "$key" || { S_skip "$key" "skipped (--skip/--only)"; return; }
+  if ! has_agent claude && ! has_agent codex; then S_skip "$key" "Codex or Claude Code not detected"; return; fi
+  S_begin "$key" "$label"
+  if [ "$DRY" = 1 ]; then
+    ok "[dry-run] would install/configure $key for detected Codex/Claude Code clients; existing integrations preserved"
+  elif ! have python3 || ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))'; then
+    fail "$key requires Python 3.8 or later"
+  elif ! ensure_integrations_lib; then
+    fail "could not load the integration installer"
+  else
+    if [ "$key" = mimic ] && ! have uv; then
+      if want deps && fetch_and_run https://astral.sh/uv/install.sh sh; then hash -r
+      else fail "Mimic needs uv: install it first, or allow dependencies"; S_end; return; fi
+    fi
+    if run_logged python3 "$INTEGRATIONS_LIB" install "$key" --agents "$DETECTED" --state-dir "$MB_HOME/state"; then
+      python3 "$INTEGRATIONS_LIB" owned "$key" --state-dir "$MB_HOME/state" && managed=1
+      mf_put "MANAGED_$mk" "$managed"; mf_put "PRESENT_$mk" 1
+      ok "$key ready; ownership recorded"
+    else fail "$key installation (see $LOGFILE)"; fi
+  fi
+  S_end
+}
+
+install_skills_component() { # install_skills_component <component> <label>
+  local key="$1" label="$2" mk="${1//-/_}" managed=0
+  want "$key" || { S_skip "$key" "skipped (--skip/--only)"; return; }
+  if ! has_agent claude && ! has_agent codex; then S_skip "$key" "Codex or Claude Code not detected"; return; fi
+  S_begin "$key" "$label"
+  if [ "$DRY" = 1 ]; then
+    ok "[dry-run] would configure $key for detected Codex/Claude Code clients (existing skills preserved)"
+  elif ! have python3 || ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))'; then
+    fail "$key requires Python 3.8 or later"
+  elif ! ensure_skills_lib; then
+    fail "could not load the skills installer"
+  elif run_logged python3 "$SKILLS_LIB" install "$key" --agents "$DETECTED" --state-dir "$MB_HOME/state"; then
+    python3 "$SKILLS_LIB" owned "$key" --state-dir "$MB_HOME/state" && managed=1
+    mf_put "MANAGED_$mk" "$managed"; mf_put "PRESENT_$mk" 1
+    ok "$key ready; ownership recorded; no security workflow was executed"
+  else fail "$key installation (see $LOGFILE)"; fi
+  S_end
+}
+
 do_install() {
   local ts; ts="$(date +%Y%m%d-%H%M%S)"
   if [ "$DRY" = 0 ]; then mkdir -p "$MB_HOME/logs"; LOGFILE="$MB_HOME/logs/install-$ts.log"; : > "$LOGFILE"; fi
   ensure_lib || true
-  mkdir -p "$HOME/.local/bin"
+  [ "$DRY" = 1 ] || mkdir -p "$HOME/.local/bin"
   case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH"; PATH_ADDED=1 ;; esac
 
   # --- plain pre-flight (may need sudo, so it runs before the animation) ---
@@ -936,6 +1029,14 @@ do_install() {
   install_plugin ecc "ECC (agents, skills, hooks)" https://github.com/affaan-m/ECC.git ecc@ecc ecc
   install_text_to_cad
   install_claude_code_setup
+  install_integration playwright "Playwright browser MCP"
+  install_integration firecrawl "Firecrawl web extraction MCP"
+  install_integration mimic "Mimic API client tools and skill"
+  install_integration open-code-review "Open Code Review CLI and plugins"
+  install_integration mac-agent "Mac SSH task runner and skill"
+  install_skills_component security-audit "Cloudflare security audit skill"
+  install_skills_component claude-red "Claude-Red security skill library"
+  install_skills_component skills-auto "Automatic relevant-skill selection"
 
   # vault
   if want vault; then
@@ -1148,6 +1249,36 @@ do_uninstall() {
     S_end
   else emit skip text-to-cad "not installed by MEGABRAIN (left untouched)"; fi
 
+  # Restore routing/metadata before checking the owned skill directories.
+  # The separate ledger survives --force and selected-component reinstalls.
+  local skill_component
+  for skill_component in skills-auto security-audit claude-red; do
+    CUR="$skill_component"; STEP_FAILED=0
+    if [ -f "$MB_HOME/state/skills.json" ]; then
+      emit begin "$skill_component"
+      if have python3 && ensure_skills_lib; then
+        if run_logged python3 "$SKILLS_LIB" uninstall "$skill_component" --state-dir "$MB_HOME/state"; then
+          ok "unchanged MEGABRAIN-owned files removed/restored; modified files kept (see log)"
+        else fail "$skill_component cleanup; ownership ledger and backups kept"; fi
+      else fail "$skill_component cleanup needs Python and skills.py; ownership ledger kept"; fi
+      S_end
+    else emit skip "$skill_component" "not installed by MEGABRAIN (left untouched)"; fi
+  done
+
+  local integration
+  for integration in playwright firecrawl mimic open-code-review mac-agent; do
+    CUR="$integration"; STEP_FAILED=0
+    if [ -f "$MB_HOME/state/integrations.json" ] || [ -f "$MB_HOME/state/skills.json" ]; then
+      emit begin "$integration"
+      if have python3 && ensure_integrations_lib; then
+        run_logged python3 "$INTEGRATIONS_LIB" uninstall "$integration" --state-dir "$MB_HOME/state" \
+          && ok "owned unchanged integrations removed; existing/modified items kept" \
+          || fail "$integration cleanup; ownership ledger kept"
+      else fail "$integration cleanup needs Python and the integration helper"; fi
+      S_end
+    else emit skip "$integration" "not installed by MEGABRAIN (left untouched)"; fi
+  done
+
   # vault (your data: kept unless explicitly purged)
   CUR=vault; STEP_FAILED=0
   local vdir purged=0 purge
@@ -1225,6 +1356,12 @@ main() {
     version) echo "MEGABRAIN $MB_VERSION"; return 0 ;;
     status) cmd_status; return $? ;;
     sync) cmd_sync; return $? ;;
+    mac)
+      local client="$MB_HOME/state/mac-runtime/mac_agent.py"
+      if [ ! -f "$client" ]; then
+        echo "Install the mac-agent component first: bash install.sh --force --only mac-agent" >&2; return 1
+      fi
+      python3 "$client" "${MAC_ARGS[@]}"; return $? ;;
     mark-installed) cmd_mark_installed; return $? ;;
     uninstall)
       if ! [ -f "$MANIFEST" ]; then echo "MEGABRAIN is not installed on this machine."; return 1; fi

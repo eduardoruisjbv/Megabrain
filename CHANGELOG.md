@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Add Playwright MCP, keyless Firecrawl MCP, pinned Mimic CLI and task skill,
+  and Open Code Review CLI with native Codex/Claude Code plugins.
+- Add a configurable Mac SSH client and public persistent job worker, explicit
+  shared context, status/logs/results, record exports, cancellation and resume.
+- Preserve pre-existing native integrations and subsequent configuration changes
+  through a separate ownership ledger; keep remote tasks and SSH configuration.
+- Show the active component in a scrolling fixed-height progress panel.
+- Install Cloudflare Security Audit and the pinned Claude-Red collection for
+  detected Codex and Claude Code clients, including complete reference files.
+- Adapt missing/oversized discovery metadata without discarding upstream content.
+- Configure automatic selection of relevant installed skills, with backed-up
+  invocation metadata and global instructions; keep execution permissions intact.
+- Track skill copies, links and configuration edits in a separate ownership
+  ledger that survives forced/selected reinstalls and preserves later user edits.
+- Add offline ownership/rollback tests and CI coverage for the skill installer.
+
+### Fixed
+- Allow CAD installation dry-runs with explicit agent overrides even when those
+  agent commands are not installed, matching the rest of the simulated workflow.
+
 ## [1.0.2] - 2026-10-20
 
 ### Added

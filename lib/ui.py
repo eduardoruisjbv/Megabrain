@@ -54,6 +54,14 @@ INSTALL_STEPS = [
     ("ecc", "ECC", "agents, skills and hooks · profile standard"),
     ("text-to-cad", "text-to-cad", "local CAD tools for Codex and Claude Code"),
     ("claude-code-setup", "Claude Code setup", "project-specific automation recommendations"),
+    ("playwright", "Playwright", "isolated browser MCP for Codex and Claude Code"),
+    ("firecrawl", "Firecrawl", "keyless web extraction MCP"),
+    ("mimic", "Mimic", "API client tools and skill"),
+    ("open-code-review", "Open Code Review", "CLI and native agent plugins"),
+    ("mac-agent", "Mac SSH runner", "persistent tasks with explicit shared context"),
+    ("security-audit", "Security audit", "Cloudflare security guidance and audit skill"),
+    ("claude-red", "Claude-Red", "security skills for Codex and Claude Code"),
+    ("skills-auto", "Skill selection", "automatically select skills relevant to each task"),
     ("vault", "Vault", "memory backup vault"),
     ("wiring", "Wiring", "memory sync, CLI and manifest"),
 ]
@@ -68,6 +76,14 @@ UNINSTALL_STEPS = [
     ("ecc", "ECC", "removing plugin"),
     ("claude-code-setup", "Claude Code setup", "removing plugin"),
     ("text-to-cad", "text-to-cad", "removing Codex and Claude Code plugins"),
+    ("skills-auto", "Skill selection", "restoring unchanged MEGABRAIN configuration"),
+    ("security-audit", "Security audit", "removing only unchanged managed skills"),
+    ("claude-red", "Claude-Red", "preserving pre-existing or modified skills"),
+    ("playwright", "Playwright", "removing unchanged managed MCP registrations"),
+    ("firecrawl", "Firecrawl", "preserving existing web extraction settings"),
+    ("mimic", "Mimic", "removing managed CLI and skill; caches kept"),
+    ("open-code-review", "Open Code Review", "removing managed CLI and plugins"),
+    ("mac-agent", "Mac SSH runner", "local client cleanup; remote jobs/config kept"),
     ("vault", "Vault", "your memories are kept unless you say so"),
     ("marker", "Marker", "removing manifest and CLI"),
 ]
@@ -284,13 +300,14 @@ def right_panel(st, now):
     ]
     context = ""
     present = 0
+    step_rows = []
     for s in st.steps:
         if st.mode == "installed":
             is_present = s.key in st.present
             present += 1 if is_present else 0
             sym, sym_style = ("✔", "green") if is_present else ("·", "dim")
             f = 1.0 if is_present else 0.0
-            rows.append(paint([
+            step_rows.append(paint([
                 (" %s " % sym, sym_style),
                 ("%-17s" % s.label, "bold" if is_present else "dim"),
                 ("[%s] " % bar_text(f), "cyan" if is_present else "dim"),
@@ -305,13 +322,23 @@ def right_panel(st, now):
         }[s.state]
         active = s.state in ("done", "running", "failed")
         tail = " skip" if s.state == "skipped" else "%3d%%" % round(s.disp * 100)
-        rows.append(paint([
+        step_rows.append(paint([
             (" %s " % sym, sym_style),
             ("%-17s" % s.label, "bold" if active else "dim"),
             ("[%s] " % bar_text(s.disp), "cyan" if active else "dim"),
             (tail, "dim" if s.state == "skipped" else ""),
         ]))
 
+    # Keep all components reachable within the fixed-height brain layout.
+    visible = 9
+    if st.mode == "installed":
+        start = (int(max(0, now - st.t_start) // 5) * visible) % len(step_rows)
+    else:
+        active_index = next((i for i, s in enumerate(st.steps) if s.state == "running"),
+                            max((i for i, s in enumerate(st.steps) if s.state != "pending"), default=0))
+        start = max(0, min(active_index - visible // 2, len(step_rows) - visible))
+    rows.extend(step_rows[start:start + visible])
+    rows.append(paint([(" components %d–%d / %d" % (start + 1, min(start + visible, len(step_rows)), len(step_rows)), "dim")]))
     rows += [BLANK] * max(0, 16 - len(rows))      # keep the layout stable
     rows = rows[:16]
     rows.append(paint([("   → " + context, "dim")] if context else [("", "")]))
@@ -438,6 +465,14 @@ class DemoSource(object):
             ("ecc", 2.6, [(0.3, "adding marketplace affaan-m/ECC"), (0.6, "resolving agents and skills"), (0.85, "hook profile: standard")]),
             ("text-to-cad", 2.8, [(0.3, "adding official marketplace for detected agents"), (0.65, "installing CAD tools and viewer plugin"), (0.9, "ready on first Codex or Claude Code session")]),
             ("claude-code-setup", 1.8, [(0.4, "adding Anthropic marketplace"), (0.85, "read-only setup recommendations enabled")]),
+            ("playwright", 1.5, [(0.5, "pinned MCP ready with an isolated browser")]),
+            ("firecrawl", 1.2, [(0.5, "keyless HTTP MCP registered")]),
+            ("mimic", 1.5, [(0.5, "CLI and relevant-task skill available; no capture started")]),
+            ("open-code-review", 1.5, [(0.5, "CLI and native plugins ready for delegated review")]),
+            ("mac-agent", 1.2, [(0.5, "local SSH client ready; configure your own host alias")]),
+            ("security-audit", 1.4, [(0.4, "fetching pinned Cloudflare skill and validators"), (0.85, "available to detected Codex and Claude Code clients")]),
+            ("claude-red", 1.8, [(0.4, "fetching pinned public skill library"), (0.85, "discovery metadata normalized; existing skills preserved")]),
+            ("skills-auto", 1.4, [(0.4, "backing up routing and invocation metadata"), (0.85, "relevant skills selected automatically; normal permissions kept")]),
             ("vault", 3.2, [(0.15, "creating hidden vault ~/.megabrain/vault"), (0.4, "PARA tree: Inbox · Projetos · Áreas · Recursos · Arquivo"),
                             (0.65, "seeding MAPA.md, AGENTS.md, Templates/"), (0.88, "writing .obsidian/graph.json")]),
             ("wiring", 2.5, [(0.25, "installing memory sync script"), (0.5, "sync timer armed: every 48h"),
@@ -470,7 +505,7 @@ class DemoSource(object):
     def _installed(self):
         yield ("emit", ["mode", "installed"])
         yield ("emit", ["meta", "present",
-                        "environment,agents,rtk,graft,cbm,rea,claude-mem,superpowers,ecc,text-to-cad,claude-code-setup,vault,wiring"])
+                            ",".join(s[0] for s in INSTALL_STEPS)])
         yes = yield ("ask", ["uninstall", "MEGABRAIN already installed",
                              "v1.0.2 · installed 2026-10-20 · " + ", ".join(self.agents),
                              "removes only what MEGABRAIN installed · vault is kept",
@@ -491,6 +526,14 @@ class DemoSource(object):
             ("ecc", 1.4, [(0.5, "plugin removed")]),
             ("claude-code-setup", 1.2, [(0.5, "plugin removed")]),
             ("text-to-cad", 1.6, [(0.3, "Claude Code plugin removed when managed"), (0.75, "Codex plugin removed when managed")]),
+            ("skills-auto", 1.2, [(0.5, "unchanged routing and invocation settings restored")]),
+            ("security-audit", 1.2, [(0.5, "unchanged managed skill removed")]),
+            ("claude-red", 1.4, [(0.5, "managed links removed; user-modified skill files kept")]),
+            ("playwright", 1.2, [(0.5, "unchanged managed MCP registrations removed")]),
+            ("firecrawl", 1.2, [(0.5, "existing Firecrawl settings preserved")]),
+            ("mimic", 1.2, [(0.5, "managed CLI and skill removed; caches kept")]),
+            ("open-code-review", 1.2, [(0.5, "managed CLI and plugins removed")]),
+            ("mac-agent", 1.2, [(0.5, "local runtime removed; remote jobs and SSH configuration kept")]),
         ]
         for step in self._run_steps(steps):
             yield step

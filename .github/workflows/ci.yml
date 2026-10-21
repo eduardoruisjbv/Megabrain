@@ -5,9 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +27,10 @@ jobs:
           shellcheck -S error install.sh uninstall.sh
 
       - name: Python compiles
-        run: python3 -m py_compile lib/ui.py lib/brain_energize.py
+        run: python3 -m py_compile lib/*.py
+
+      - name: Integration ownership, SSH payloads and rollback
+        run: python3 -m unittest discover -s tests -v
 
       - name: UI preview renders
         run: |
@@ -32,7 +39,9 @@ jobs:
 
       - name: Installer dry-run (changes nothing)
         run: |
-          bash install.sh --dry-run --no-anim -y --agents claude --skip deps
+          bash install.sh --dry-run --no-anim -y --agents claude,codex --skip deps
+          test ! -e "$HOME/.megabrain"
+          bash install.sh --dry-run --no-anim -y --agents codex --only mac-agent --only firecrawl --skip deps
           test ! -e "$HOME/.megabrain"
 
       - name: Version files agree
