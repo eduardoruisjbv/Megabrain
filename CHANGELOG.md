@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-22
+
+### Changed
+- Replace the Claude-only claude-mem plugin and scheduled cross-agent mirrors
+  with ai-memory 3.1.0 for supported detected agents.
+- Configure Hermes hooks and MCP through its native configuration command while
+  preserving unrelated settings and user-edited hooks.
+- Stop the legacy memory timer during migration and keep all existing vault notes
+  and archived mirrors. The Markdown vault remains a separate knowledge store.
+- Keep legacy claude-mem data on disk when replacing its plugin.
+
 ## [1.1.0] - 2026-10-22
 
 ### Added
@@ -86,7 +97,9 @@ First public release.
   installing or writing anything.
 - Linux (apt, dnf, yum, pacman, zypper, apk, xbps), macOS (Homebrew) and WSL support.
 
-[Unreleased]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/eduardoruisjbv/Megabrain/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/eduardoruisjbv/Megabrain/releases/tag/v1.0.0

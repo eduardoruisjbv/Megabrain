@@ -16,8 +16,10 @@ from skills import Installer, digest, exists
 PLAYWRIGHT = "@playwright/mcp@0.0.83"
 MIMIC = "git+https://github.com/littledivy/mimic.git@8cf998ac0b365806d8e522d34107cc504ecaa345"
 OCR = "@alibaba-group/open-code-review@1.13.2"
-COMPONENTS = ["playwright", "firecrawl", "mimic", "open-code-review", "mac-agent", "hermes"]
+COMPONENTS = ["ai-memory", "playwright", "firecrawl", "mimic", "open-code-review", "mac-agent", "hermes"]
 HERMES_INSTALLER = "https://hermes-agent.nousresearch.com/install.sh"
+AI_MEMORY_INSTALLER = "https://raw.githubusercontent.com/akitaonrails/ai-memory/v3.1.0/install.sh"
+AI_MEMORY_VERSION = "3.1.0"
 SKILL_TEXT = {
     "mimic": """---
 name: mimic
@@ -74,7 +76,8 @@ validation accurately. No all-permissions or sandbox-bypass flags are used.
 class Manager:
     def __init__(self, home, state_dir, agents, codex_home=None, runner=None, vault_dir=None):
         self.home, self.state_dir = Path(home).absolute(), Path(state_dir).absolute()
-        self.agents = set(agents) & {"claude", "codex", "hermes"}
+        self.detected_agents = set(agents)
+        self.agents = self.detected_agents & {"claude", "codex", "hermes"}
         self.skills = Installer(home, state_dir, agents, codex_home)
         self.vault_dir = Path(vault_dir).absolute() if vault_dir else self.state_dir.parent / "vault"
         self.path = self.state_dir / "integrations.json"
@@ -114,6 +117,8 @@ class Manager:
             if not exists(plugin):
                 return None
             return {"digest": digest(plugin), "plugins": self.hermes_config("plugins")}
+        if kind == "hermes-config":
+            return self.hermes_config(name)
         if kind == "mcp":
             if agent == "hermes":
                 return self.hermes_config("mcp_servers." + name)
@@ -145,7 +150,7 @@ class Manager:
         raise ValueError("Unknown native integration kind")
 
     def hermes_config(self, key):
-        result = self.runner(["hermes", "config", "get", key], stdout=subprocess.PIPE,
+        result = self.runner(["hermes", "config", "get", key, "--json"], stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, universal_newlines=True, timeout=30,
                              env=dict(os.environ, HERMES_HOME=str(self.skills.hermes_home)))
         if result.returncode == 0:
@@ -220,7 +225,7 @@ class Manager:
                 self.hermes_mcp("hermes", name, {"command": command, "args": args})
         text = """---
 name: megabrain
-description: Retrieve relevant project context from the MEGABRAIN Markdown vault, use repository graphs, and mirror Hermes persistent memories. Use for prior decisions, project continuity, memory or MEGABRAIN setup.
+description: Retrieve relevant project context from the MEGABRAIN Markdown vault and use repository graphs. Use for prior decisions, project continuity, or MEGABRAIN setup.
 ---
 # MEGABRAIN with Hermes
 
@@ -233,9 +238,9 @@ Never load the whole vault into the prompt or copy another agent's memory into
 Hermes automatically. Keep credentials and raw conversation databases out of it.
 
 Hermes keeps its own MEMORY.md and USER.md under its active HERMES_HOME/memories.
-`megabrain sync` mirrors these two files into 03-Recursos/IA/Hermes without
-changing the originals; the scheduled mirror runs every 48 hours. User edits in
-the vault are kept. If a removable vault is unavailable, wait for it to be mounted.
+Agent session memory is managed by ai-memory. Keep this knowledge vault
+separate. Do not mirror agent notes or raw sessions into it. If a removable
+vault is unavailable, wait for it to be mounted.
 
 Use graft or codebase-memory tools for structural repository questions when
 available. Select relevant installed skills for each task and read their SKILL.md
@@ -250,6 +255,102 @@ an explicit user login; inspect provider billing before authorizing paid usage.
         finally:
             self.skills.agents = agents
         print("Hermes ready. Complete provider login with hermes auth add PROVIDER; existing accounts are preserved.")
+
+    def install_ai_memory(self):
+        """Install the pinned ai-memory release and wire only detected clients."""
+        if shutil.which("ai-memory") is None:
+            with tempfile.TemporaryDirectory(prefix="megabrain-ai-memory-") as temporary:
+                installer = Path(temporary) / "install.sh"
+                with urllib.request.urlopen(AI_MEMORY_INSTALLER, timeout=120) as response:
+                    payload = response.read(4 * 1024 * 1024 + 1)
+                if len(payload) > 4 * 1024 * 1024:
+                    raise ValueError("ai-memory installer exceeds download limit")
+                installer.write_bytes(payload)
+                self.run(["sh", str(installer)], env={"AI_MEMORY_VERSION": AI_MEMORY_VERSION})
+            if shutil.which("ai-memory") is None:
+                raise RuntimeError("ai-memory installer completed but its CLI is not on PATH")
+            item = {"component": "ai-memory", "kind": "cli", "name": "ai-memory",
+                    "remove": ["ai-memory", "uninstall", "--apply"]}
+            item["after"] = self.probe(item)
+            self.data["entries"]["ai-memory:shared:cli:ai-memory"] = item
+            self.save()
+        version = self.run(["ai-memory", "--version"]).strip()
+        if AI_MEMORY_VERSION not in version and self.data["entries"].get("ai-memory:shared:cli:ai-memory"):
+            raise RuntimeError("Expected ai-memory " + AI_MEMORY_VERSION + ", found " + version)
+
+        # ai-memory setup owns its own files and preserves existing agent data.
+        # Map only known CLI names. The personal Markdown vault remains separate.
+        agent_names = {
+            "claude": "claude-code", "codex": "codex", "gemini": "gemini-cli",
+            "cursor": "cursor", "opencode": "opencode", "hermes": "hermes",
+            "kiro": "kiro-cli", "antigravity": "antigravity-cli", "droid": "droid",
+            "pi": "pi", "copilot": "copilot-cli", "cline": "cline",
+        }
+        supported = [agent_names[name] for name in sorted(self.detected_agents) if name in agent_names]
+        automatic = [name for name in supported if name != "hermes"]
+        if automatic:
+            command = ["ai-memory", "setup", "--yes"]
+            for name in automatic:
+                command.extend(["--agent", name])
+            self.run(command)
+        if "hermes" in supported:
+            self.install_ai_memory_hermes()
+        for name in sorted(self.detected_agents - set(agent_names)):
+            print("ai-memory: no automatic setup mapping for detected agent " + name)
+        print("ai-memory " + version + " ready; the MEGABRAIN Markdown vault and archived notes remain unchanged.")
+
+    def install_ai_memory_hermes(self):
+        """Merge ai-memory hooks with Hermes config through its native config CLI."""
+        self.native("ai-memory", "mcp", "ai-memory",
+                    [["hermes", "config", "set", "mcp_servers.ai-memory",
+                      json.dumps({"command": shutil.which("ai-memory"),
+                                  "args": ["mcp-bridge", "--no-session-id"]}), "--force"]],
+                    ["hermes", "config", "unset", "mcp_servers.ai-memory"], "hermes")
+        rendered = self.runner(["ai-memory", "install-hooks", "--agent", "hermes"],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   universal_newlines=True, timeout=120,
+                                   env=dict(os.environ, HERMES_HOME=str(self.skills.hermes_home)))
+        if rendered.returncode:
+            raise RuntimeError("ai-memory could not render Hermes hooks: " + rendered.stderr[-2000:])
+        # Upstream renders a stable, deliberately small YAML subset. Parse only
+        # its event/list/command form so MegaBrain does not add a YAML dependency.
+        hooks = {}
+        event = None
+        for line in rendered.stdout.splitlines():
+            if line.startswith("  ") and line.endswith(":") and not line.startswith("    "):
+                event = line.strip()[:-1]
+                hooks[event] = []
+            elif event and line.startswith("    - command: '"):
+                value = line[len("    - command: '"):-1]
+                hooks[event].append({"command": value.replace("''", "'"), "timeout": 20})
+        if not isinstance(hooks, dict) or not hooks:
+            raise RuntimeError("ai-memory returned an empty Hermes hooks block")
+
+        for event, entries in hooks.items():
+            if not isinstance(entries, list):
+                raise RuntimeError("Unexpected ai-memory Hermes hook format for " + str(event))
+            key = "ai-memory:hermes-hook:" + str(event)
+            before = self.hermes_config("hooks." + str(event))
+            try:
+                current = json.loads(before["config"]) if before else []
+            except (TypeError, ValueError):
+                current = []
+            if not isinstance(current, list):
+                raise RuntimeError("Hermes hooks." + str(event) + " is not a list")
+            additions = [entry for entry in entries if entry not in current]
+            if not additions:
+                print("Preserved existing Hermes ai-memory hooks for " + str(event))
+                continue
+            updated = current + additions
+            self.run(["hermes", "config", "set", "hooks." + str(event),
+                      json.dumps(updated), "--force"])
+            self.data["entries"][key] = {"component": "ai-memory", "kind": "hermes-hook",
+                                         "name": str(event), "agent": "hermes",
+                                         "added": additions}
+            self.save()
+        self.native("ai-memory", "hermes-config", "hooks_auto_accept",
+                    [["hermes", "config", "set", "hooks_auto_accept", "true", "--force"]],
+                    ["hermes", "config", "unset", "hooks_auto_accept"], "hermes")
 
     def browser(self):
         for name in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]:
@@ -270,6 +371,11 @@ an explicit user login; inspect provider billing before authorizing paid usage.
         return str(max(candidates, key=lambda path: path.stat().st_mtime))
 
     def install(self, component):
+        if component == "ai-memory":
+            if not self.detected_agents:
+                return
+            self.install_ai_memory()
+            return
         if not self.agents:
             return
         if "codex" in self.agents:
@@ -370,6 +476,29 @@ Do not assume Claude/Codex plugin commands or their tool names exist in Hermes.
         for key, item in sorted(self.data["entries"].items(), key=lambda pair: pair[1]["kind"] == "cli"):
             if item["component"] != component:
                 continue
+            if item["kind"] == "hermes-hook":
+                result = self.runner(["hermes", "config", "get", "hooks." + item["name"], "--json"],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     universal_newlines=True, timeout=30,
+                                     env=dict(os.environ, HERMES_HOME=str(self.skills.hermes_home)))
+                if result.returncode:
+                    unchecked.append(key)
+                    continue
+                try:
+                    current = json.loads(result.stdout)
+                except ValueError:
+                    unchecked.append(key)
+                    continue
+                remaining = [entry for entry in current if entry not in item.get("added", [])]
+                if remaining != current:
+                    if remaining:
+                        self.run(["hermes", "config", "set", "hooks." + item["name"],
+                                  json.dumps(remaining), "--force"])
+                    else:
+                        self.run(["hermes", "config", "unset", "hooks." + item["name"]])
+                del self.data["entries"][key]
+                self.save()
+                continue
             try:
                 current = self.probe(item)
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
@@ -380,6 +509,10 @@ Do not assume Claude/Codex plugin commands or their tool names exist in Hermes.
             if current is None or current == item["after"]:
                 if current is not None:
                     self.run(item["remove"])
+                    if item["component"] == "ai-memory" and item["kind"] == "cli":
+                        launcher = Path(current["path"])
+                        if self.home in launcher.parents:
+                            launcher.unlink()
                 del self.data["entries"][key]
                 self.save()
             else:

@@ -40,8 +40,8 @@
 ```
 
 MEGABRAIN detects the coding agents you already use, installs a curated set of
-open-source tools that cut token usage and give your agents persistent memory, and
-creates a plain-Markdown **memory vault** you own. It is reversible: a safe
+open-source tools that cut token usage, provide shared agent memory, and create
+a plain-Markdown **knowledge vault** you own. It is reversible: a safe
 uninstaller removes only what it installed.
 
 ## Quick start
@@ -71,10 +71,10 @@ bash install.sh --dry-run --no-anim   # exact list of steps it would run
 | Component | What it does | Installed for |
 |---|---|---|
 | [**Hermes Agent**](https://github.com/NousResearch/hermes-agent) | Installs the official stable CLI, connects available repository MCPs and adds a vault context skill | default automatic detection, or explicit `--agents hermes` |
+| [**ai-memory**](https://github.com/akitaonrails/ai-memory) | Shared agent memory with lifecycle capture, search and handoffs; pinned to v3.1.0 | detected supported agents, including Claude Code, Codex and Hermes |
 | [**RTK**](https://github.com/rtk-ai/rtk) | Compresses command output before it reaches the model (typically 60–90% fewer tokens on `grep`, `git`, `ls`…) | every detected agent that supports hooks |
 | [**graft**](https://www.npmjs.com/package/@nanonets/graft) | A graph of your repo (symbols, callers, spans) so agents read less code | MCP server for Claude Code, Codex and Hermes; `graft init` per repo |
 | [**codebase-memory-mcp**](https://github.com/DeusData/codebase-memory-mcp) | Structural code knowledge graph (SQLite) with search, tracing and impact analysis | every client it supports |
-| [**claude-mem**](https://github.com/thedotmack/claude-mem) | Persistent memory across sessions | Claude Code |
 | [**superpowers**](https://github.com/anthropics/claude-plugins-official) | Process skills (brainstorming, debugging, planning…) | Claude Code |
 | [**ECC**](https://github.com/affaan-m/ECC) | Agents, skills and hooks (profile `standard`) | Claude Code |
 | [**text-to-cad**](https://github.com/earthtojake/text-to-cad) | Local CAD workflows and viewer for generating STEP, GLB, STL and 3MF models | Codex and Claude Code |
@@ -88,7 +88,7 @@ bash install.sh --dry-run --no-anim   # exact list of steps it would run
 | [**Security Audit**](https://github.com/cloudflare/security-audit-skill) | Cloudflare's security guidance and multi-phase code-audit skill, including validators | Codex and Claude Code |
 | [**Claude-Red**](https://github.com/SnailSploit/claude-red) | Security methodology library (79 skills at the pinned revision) | Codex and Claude Code |
 | **Automatic skill selection** | Persistent guidance to select relevant installed skills without naming them in each prompt | Codex, Claude Code and Hermes |
-| **Memory vault** | Plain-Markdown vault (PARA layout), mirrored from your agents' memories every 48h | you |
+| **Knowledge vault** | Plain-Markdown vault (PARA layout) for your notes and references; separate from agent memory | you |
 | [**Obsidian**](https://obsidian.md) *(optional)* | Visualize the vault as a graph | asked at the end |
 
 ### Supported agents
@@ -112,26 +112,24 @@ dependencies. `--skip hermes` skips this bootstrap and core setup; an explicit
 `--agents` list is authoritative, so include `hermes` when you want it configured.
 
 ```bash
-bash install.sh -y --agents hermes --only hermes --only vault --only skills-auto
+bash install.sh -y --agents hermes --only hermes --only ai-memory --only vault --only skills-auto
 # Add any other desired components, e.g. --only playwright --only firecrawl
 hermes mcp list
 hermes skills list
-megabrain sync
+ai-memory doctor
 ```
 
 The core integration registers installed graft and codebase-memory MCPs. Selected
 Playwright/Firecrawl components also register with Hermes. The compatible curated
 Markdown collections, Mimic and Mac runner skills install into `~/.hermes/skills`;
 Open Code Review uses its CLI and a Hermes skill. Native Claude/Codex plugins
-(including claude-mem and Knowledge Work) are not loaded into Hermes. Hermes
-already includes its own debugging, testing and persistent memory tools.
+(including Knowledge Work) are not loaded into Hermes. ai-memory configures
+Hermes hooks and MCP through its supported interfaces.
 
 The `megabrain` skill points Hermes at your selected vault and instructs it to
-retrieve only relevant notes. Its own `MEMORY.md` and `USER.md` are mirrored to
-`03-Recursos/IA/Hermes/` every 48h. Existing vault notes and user edits are kept;
-auth files, `.env`, session databases and raw conversations are excluded.
-`HERMES_HOME` is respected for configuration, skills and memory sources. A
-removable vault must be mounted before a sync can run.
+retrieve only relevant notes from the knowledge vault. Agent memory is managed
+by ai-memory. The old scheduled mirror stops during migration. Existing vault
+notes and archived mirror files stay in place. `HERMES_HOME` is respected.
 
 Authentication remains a user login: use `hermes auth add PROVIDER`, then
 `hermes model` to choose the model. A new runtime disables adoption of other
@@ -143,7 +141,7 @@ Uninstall removes only unchanged MCP settings and skills that MEGABRAIN created.
 It removes Hermes itself only if MEGABRAIN installed it and its launcher/version
 still match; Hermes' normal uninstall keeps configuration, memories and logins.
 
-## The memory vault
+## The knowledge vault
 
 Always created — with or without Obsidian — at `~/.megabrain/vault` (a hidden folder).
 It is just Markdown, so it works with Obsidian, VS Code, Logseq, or `cat`.
@@ -153,7 +151,7 @@ It is just Markdown, so it works with Obsidian, VS Code, Logseq, or `cat`.
 ├── 00-Inbox/            quick capture
 ├── 01-Projetos/         work with a beginning and an end
 ├── 02-Áreas/            ongoing responsibilities
-├── 03-Recursos/IA/      ← your agents' memories are mirrored here (Claude/, Codex/, Gemini/, Hermes/)
+├── 03-Recursos/IA/      ← your curated AI references and archived mirror files
 ├── 04-Arquivo/          finished
 ├── Diário/Logs de IA/   what each AI session did
 ├── Templates/           project, AI-log and spec templates
@@ -161,8 +159,9 @@ It is just Markdown, so it works with Obsidian, VS Code, Logseq, or `cat`.
 └── MAPA.md  AGENTS.md  README.md
 ```
 
-A sync job (systemd user timer, launchd or cron — whichever your system has) copies
-new or changed memories every 48 hours. Run it now with `megabrain sync`.
+Agent memory runs through ai-memory. The vault remains an independent Markdown
+knowledge store. Migration stops the old 48-hour mirror and keeps its existing
+files in place.
 
 To open it in Obsidian: **Open folder as vault → `~/.megabrain/vault` → Graph view**.
 
@@ -195,15 +194,15 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
 | Already on your machine before | **left untouched** |
 | Memory vault | **kept** unless you confirm or pass `--purge-vault` |
 | Code indexes (codebase-memory) | **kept** |
-| claude-mem data | **kept** |
+| Existing vault notes and archived mirror files | **kept** |
 
 ## Options
 
 | Option | Description |
 |---|---|
-| `uninstall` · `status` · `sync` · `version` | subcommands |
+| `uninstall` · `status` · `version` | subcommands |
 | `--agents a,b` | skip detection, use this list |
-| `--skip <item>` / `--only <item>` | `hermes rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red skills-auto vault deps obsidian` |
+| `--skip <item>` / `--only <item>` | `ai-memory hermes rtk graft cbm rea superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red skills-auto vault deps obsidian` |
 | `--obsidian yes\|no` | answer the Obsidian question without asking |
 | `--vault-dir <dir>` | vault location (default `~/.megabrain/vault`) |
 | `--language <lang>` | answer language for Claude Code |
@@ -394,14 +393,14 @@ a manifest tracks what it owns. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.m
 
 [Semantic Versioning](https://semver.org). The version lives in [`VERSION`](VERSION),
 every release is tagged `vX.Y.Z`, and changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
-Pin the latest published release with `MEGABRAIN_REF=v1.0.1`.
+Pin the memory migration release with `MEGABRAIN_REF=v1.2.0` after publication.
 
 ## Credits
 
 MEGABRAIN stands on the shoulders of [RTK](https://github.com/rtk-ai/rtk),
 [graft](https://www.npmjs.com/package/@nanonets/graft),
 [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp),
-[claude-mem](https://github.com/thedotmack/claude-mem),
+[ai-memory](https://github.com/akitaonrails/ai-memory),
 [superpowers](https://github.com/anthropics/claude-plugins-official),
 [ECC](https://github.com/affaan-m/ECC),
 [text-to-cad](https://github.com/earthtojake/text-to-cad),

@@ -4,10 +4,9 @@
 #
 # Detects the coding agents installed on this machine (Claude Code, Codex,
 # Gemini, Cursor, ...) and sets up a token-saving + memory stack for all of
-# them: RTK, graft, codebase-memory-mcp, REA, text-to-cad for Codex and Claude
-# Code, plus Claude Code plugins for claude-mem, superpowers, ECC and setup guidance.
-# Always creates a plain-Markdown memory vault
-# (a backup that works with or without Obsidian) and then offers Obsidian.
+# them: ai-memory, RTK, graft, codebase-memory-mcp, REA, text-to-cad for Codex
+# and Claude Code, plus plugins and setup guidance. Always creates a separate
+# plain-Markdown knowledge vault and then offers Obsidian.
 #
 # Privacy: no private state is imported from another machine. The script only
 # checks that agent commands/folders EXIST, installs public tools and lets each
@@ -18,13 +17,12 @@
 #   bash install.sh                  install (or show status if already installed)
 #   bash install.sh uninstall        remove what MEGABRAIN installed
 #   bash install.sh status           show what is installed
-#   bash install.sh sync             refresh the memory vault now
 #   megabrain mac --help              run persistent Codex/Claude jobs on your Mac
 #   bash install.sh --list-agents    show detected agents and exit
 #
 # Options:
 #   --agents a,b,c       skip detection and use this list (e.g. claude,codex)
-#   --skip <item>        skip: hermes rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red design-skills writing-skills workflow-skills skills-auto vault deps obsidian
+#   --skip <item>        skip: ai-memory hermes rtk graft cbm rea superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red design-skills writing-skills workflow-skills skills-auto vault deps obsidian
 #   --only <item>        install only this item (repeatable)
 #   --language <lang>    answer language for Claude Code (default: unchanged)
 #   --vault-dir <dir>    vault location (default: ~/.megabrain/vault, hidden)
@@ -40,7 +38,8 @@
 
 set -uo pipefail
 
-MB_VERSION="1.1.0"
+MB_VERSION="1.2.0"
+AI_MEMORY_VERSION="3.1.0"
 MB_REPO="eduardoruisjbv/Megabrain"
 MB_REF="${MEGABRAIN_REF:-main}"
 MB_RAW="https://raw.githubusercontent.com/${MB_REPO}/${MB_REF}"
@@ -263,20 +262,6 @@ ensure_integrations_lib() {
   INTEGRATIONS_LIB="$tmp/integrations.py"; SKILLS_LIB="$tmp/skills.py"
 }
 
-SYNC_LIB=""
-ensure_sync_lib() {
-  local d tmp
-  for d in "$SELF_DIR/lib" "$SELF_DIR" "$MB_HOME/lib"; do
-    if [ -n "$d" ] && [ -f "$d/sync_memories.py" ]; then SYNC_LIB="$d/sync_memories.py"; return 0; fi
-  done
-  have curl || return 1
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/megabrain-sync-lib.XXXXXX")" || return 1
-  if curl -fsSL --max-time 30 "$MB_RAW/lib/sync_memories.py" -o "$tmp/sync_memories.py" >>"$LOGFILE" 2>&1; then
-    SYNC_LIB="$tmp/sync_memories.py"; return 0
-  fi
-  rm -rf "$tmp"; return 1
-}
-
 copy_atomic() { # copy_atomic <src> <dest>   a new inode, so a running copy of a script keeps working
   [ "$1" = "$2" ] && return 0
   local tmp; tmp="$(mktemp "$(dirname "$2")/.mb-copy.XXXXXX")" || return 1
@@ -306,6 +291,10 @@ mf_put() { # mf_put KEY VALUE
   { [ -f "$MANIFEST" ] && grep -v "^$1=" "$MANIFEST"; printf '%s="%s"\n' "$1" "$value"; } > "$tmp"
   mv "$tmp" "$MANIFEST"
 }
+mf_put_exact() { # mf_put_exact KEY VALUE, including an intentional ownership reset
+  local keep="$KEEP_OWNED"
+  KEEP_OWNED=0; mf_put "$1" "$2"; KEEP_OWNED="$keep"
+}
 is_installed() { [ -f "$MANIFEST" ] && [ "$(mf_get STATUS)" = "complete" ]; }
 
 mf_reset_keep_owned() { # start a fresh manifest, carrying over what MEGABRAIN owns
@@ -319,11 +308,11 @@ mf_reset_keep_owned() { # start a fresh manifest, carrying over what MEGABRAIN o
 }
 
 SKILL_COMPONENTS="security-audit claude-red design-skills writing-skills workflow-skills"
-INTEGRATIONS="playwright firecrawl mimic open-code-review mac-agent hermes"
+INTEGRATIONS="ai-memory playwright firecrawl mimic open-code-review mac-agent hermes"
 
 present_list() {
   local out="environment,agents" k
-  for k in hermes rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc text_to_cad claude_code_setup playwright firecrawl mimic open_code_review mac_agent knowledge_work security_audit claude_red design_skills writing_skills workflow_skills skills_auto vault wiring; do
+  for k in ai_memory hermes rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc text_to_cad claude_code_setup playwright firecrawl mimic open_code_review mac_agent knowledge_work security_audit claude_red design_skills writing_skills workflow_skills skills_auto vault wiring; do
     [ "$(mf_get "PRESENT_$k")" = 1 ] && out="$out,$(printf '%s' "$k" | tr '_' '-')"
   done
   printf '%s' "$out"
@@ -417,8 +406,8 @@ create_vault() {
 # Memory vault
 
 A folder of plain Markdown notes. It works with Obsidian, VS Code, Logseq or
-any editor. The memories of your AI agents are mirrored into `03-Recursos/IA/`
-automatically (every 48h) and act as a backup.
+any editor. This vault holds personal notes and project references. Agent
+memory uses ai-memory and stays separate from this vault.
 
 - `MAPA.md` explains the layout (PARA method).
 - In Obsidian: *Open folder as vault* and choose this folder.
@@ -433,7 +422,7 @@ EOF
 | `00-Inbox` | quick capture; triage later |
 | `01-Projetos` | work with a beginning and an end |
 | `02-Áreas` | ongoing responsibilities |
-| `03-Recursos` | reference; `IA/` receives your agents' memories |
+| `03-Recursos` | reference material and curated resources |
 | `04-Arquivo` | what is finished |
 | `Diário/Logs de IA` | what each AI session did |
 | `Templates` | note templates |
@@ -548,127 +537,21 @@ EOF
 }
 
 SYNC_BIN="$MB_HOME/bin/sync-memories.sh"
-
-install_sync() {
-  mkdir -p "$MB_HOME/bin" "$MB_HOME/state" "$MB_HOME/lib"
-  # Curated mirror with Graft cards and preserved vault edits; the shell body
-  # below is the fallback for machines without Python 3.
-  ensure_sync_lib && copy_atomic "$SYNC_LIB" "$MB_HOME/lib/sync_memories.py"
-  {
-    printf '#!/usr/bin/env bash\n'
-    printf '# Mirrors AI agent memories (read-only on the source side) into the vault.\n'
-    printf 'VAULT="${MEGABRAIN_VAULT:-%s}"\n' "$VAULT_DIR"
-    printf 'MB_HOME="%s"\n' "$MB_HOME"
-    cat <<'EOF'
-DEST="$VAULT/03-Recursos/IA"
-[ -d "$VAULT" ] || { printf 'MEGABRAIN vault unavailable: %s\n' "$VAULT" >&2; exit 2; }
-if command -v python3 >/dev/null 2>&1 && [ -f "$MB_HOME/lib/sync_memories.py" ]; then
-  exec python3 "$MB_HOME/lib/sync_memories.py" --vault "$VAULT" --state-dir "$MB_HOME/state"
-fi
-
-copy_tree() { # copy_tree <dest-name> <source-dir>
-  [ -d "$2" ] || return 0
-  find "$2" -type f -name '*.md' 2>/dev/null | while IFS= read -r f; do
-    rel="${f#"$2"/}"
-    out="$DEST/$1/$rel"
-    if [ ! -f "$out" ] || ! cmp -s "$f" "$out"; then
-      mkdir -p "$(dirname "$out")" && cp "$f" "$out"
-    fi
-  done
-}
-
-# Claude Code: automatic memory per project
-for d in "$HOME"/.claude/projects/*/memory; do
-  [ -d "$d" ] || continue
-  copy_tree "Claude/$(basename "$(dirname "$d")")" "$d"
-done
-# Codex
-copy_tree "Codex" "$HOME/.codex/memories"
-# Gemini
-if [ -f "$HOME/.gemini/GEMINI.md" ]; then
-  mkdir -p "$DEST/Gemini"
-  cmp -s "$HOME/.gemini/GEMINI.md" "$DEST/Gemini/GEMINI.md" || cp "$HOME/.gemini/GEMINI.md" "$DEST/Gemini/GEMINI.md"
-fi
-# Hermes has exactly two curated persistent notes; no session or credential files.
-for name in MEMORY.md USER.md; do
-  note="${HERMES_HOME:-$HOME/.hermes}/memories/$name"
-  if [ -f "$note" ]; then
-    mkdir -p "$DEST/Hermes"
-    # The fallback never replaces a vault note; Python handles tracked updates.
-    [ -e "$DEST/Hermes/$name" ] || cp "$note" "$DEST/Hermes/$name"
-  fi
-done
-mkdir -p "$MB_HOME/state"
-date -u +%Y-%m-%dT%H:%M:%SZ > "$MB_HOME/state/last-sync" 2>/dev/null
-exit 0
-EOF
-  } > "$SYNC_BIN"
-  chmod +x "$SYNC_BIN"
-}
-
 SYNC_METHOD=""
-schedule_sync() { # every 48h: systemd --user, launchd or cron
-  SYNC_METHOD=""
-  if [ "$OS_NAME" = "Darwin" ]; then
-    local plist="$HOME/Library/LaunchAgents/com.megabrain.sync.plist"
-    mkdir -p "$(dirname "$plist")"
-    cat > "$plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>Label</key><string>com.megabrain.sync</string>
-<key>ProgramArguments</key><array><string>$SYNC_BIN</string></array>
-<key>StartInterval</key><integer>172800</integer>
-<key>RunAtLoad</key><true/>
-</dict></plist>
-EOF
-    launchctl unload "$plist" >/dev/null 2>&1
-    launchctl load "$plist" >/dev/null 2>&1 && SYNC_METHOD="launchd"
-  elif have systemctl && systemctl --user show-environment >/dev/null 2>&1; then
-    local ud="$HOME/.config/systemd/user"
-    mkdir -p "$ud"
-    cat > "$ud/megabrain-sync.service" <<EOF
-[Unit]
-Description=MEGABRAIN: mirror agent memories into the vault
-
-[Service]
-Type=oneshot
-ExecStart=$SYNC_BIN
-EOF
-    cat > "$ud/megabrain-sync.timer" <<'EOF'
-[Unit]
-Description=MEGABRAIN: sync memories into the vault every 48h
-
-[Timer]
-OnBootSec=15min
-OnUnitActiveSec=48h
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-    systemctl --user daemon-reload >/dev/null 2>&1
-    systemctl --user enable --now megabrain-sync.timer >/dev/null 2>&1 && SYNC_METHOD="systemd"
-  elif have crontab; then
-    ( crontab -l 2>/dev/null | grep -v 'megabrain/bin/sync-memories.sh'; echo "0 4 */2 * * $SYNC_BIN" ) | crontab - \
-      && SYNC_METHOD="cron"
-  fi
-  [ -n "$SYNC_METHOD" ]
-}
 
 unschedule_sync() {
   case "$(mf_get SYNC_METHOD)" in
     systemd)
-      systemctl --user disable --now megabrain-sync.timer >/dev/null 2>&1
+      systemctl --user disable --now megabrain-sync.timer >/dev/null 2>&1 || return 1
       rm -f "$HOME/.config/systemd/user/megabrain-sync.timer" "$HOME/.config/systemd/user/megabrain-sync.service"
-      systemctl --user daemon-reload >/dev/null 2>&1 ;;
+      systemctl --user daemon-reload >/dev/null 2>&1 || return 1 ;;
     launchd)
-      launchctl unload "$HOME/Library/LaunchAgents/com.megabrain.sync.plist" >/dev/null 2>&1
-      rm -f "$HOME/Library/LaunchAgents/com.megabrain.sync.plist" ;;
+      launchctl unload "$HOME/Library/LaunchAgents/com.megabrain.sync.plist" >/dev/null 2>&1 || return 1
+      rm -f "$HOME/Library/LaunchAgents/com.megabrain.sync.plist" || return 1 ;;
     cron)
-      ( crontab -l 2>/dev/null | grep -v 'megabrain/bin/sync-memories.sh' ) | crontab - 2>/dev/null ;;
+      ( crontab -l 2>/dev/null | grep -v 'megabrain/bin/sync-memories.sh' ) | crontab - 2>/dev/null || return 1 ;;
   esac
-  rm -f "$SYNC_BIN"
+  rm -f "$SYNC_BIN" || return 1
 }
 
 install_cli() { # keep a copy so `megabrain` works from anywhere
@@ -679,7 +562,6 @@ install_cli() { # keep a copy so `megabrain` works from anywhere
     for name in ui.py brain_energize.py; do copy_atomic "$LIB_DIR/$name" "$dest/$name"; done
   fi
   [ -n "$SKILLS_LIB" ] && copy_atomic "$SKILLS_LIB" "$dest/skills.py"
-  [ -n "$SYNC_LIB" ] && copy_atomic "$SYNC_LIB" "$dest/sync_memories.py"
   if [ -n "$INTEGRATIONS_LIB" ]; then
     local source; source="$(dirname "$INTEGRATIONS_LIB")"
     for name in integrations.py mac_agent.py mac_worker.py; do
@@ -733,17 +615,17 @@ cmd_status() {
   echo "installed: $(mf_get INSTALLED_AT)"
   echo "agents:    $(mf_get AGENTS)"
   echo "vault:     $(mf_get VAULT_DIR)"
-  echo "sync:      ${SYNC_METHOD:-$(mf_get SYNC_METHOD)}  (last: $(cat "$MB_HOME/state/last-sync" 2>/dev/null || echo never))"
+  if have ai-memory; then echo "memory:    $(ai-memory --version 2>/dev/null)  (independent of the Markdown vault)"
+  else echo "memory:    not available"; fi
   local k
-  for k in hermes rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc claude_code_setup playwright firecrawl mimic open_code_review mac_agent knowledge_work security_audit claude_red design_skills writing_skills workflow_skills skills_auto; do
+  for k in ai_memory hermes rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc claude_code_setup playwright firecrawl mimic open_code_review mac_agent knowledge_work security_audit claude_red design_skills writing_skills workflow_skills skills_auto; do
     printf '  %-14s present=%s  managed-by-megabrain=%s\n' "$k" "$(mf_get "PRESENT_$k")" "$(mf_get "MANAGED_$k")"
   done
   printf '  %-14s present=%s  Claude-managed=%s  Codex-managed=%s\n' "text-to-cad" "$(mf_get PRESENT_text_to_cad)" "$(mf_get MANAGED_text_to_cad_claude)" "$(mf_get MANAGED_text_to_cad_codex)"
 }
 
 cmd_sync() {
-  [ -x "$SYNC_BIN" ] || { echo "No sync script found. Is MEGABRAIN installed?" >&2; return 1; }
-  "$SYNC_BIN" && echo "Vault refreshed ($(cat "$MB_HOME/state/last-sync" 2>/dev/null))."
+  echo "The agent memory mirror is retired. ai-memory manages agent memory. The Markdown vault remains unchanged."
 }
 
 # Mark this machine as already installed WITHOUT installing or changing anything.
@@ -808,7 +690,7 @@ preflight() {
   for x in curl git; do have "$x" || need="$need $x"; done
   local item needs_python=0
   for item in $SKILL_COMPONENTS $INTEGRATIONS skills-auto; do want "$item" && needs_python=1; done
-  if { has_agent claude || has_agent codex || has_agent hermes; } && [ "$needs_python" = 1 ]; then
+  if [ -n "$DETECTED" ] && [ "$needs_python" = 1 ]; then
     have python3 || need="$need python3"
   fi
   if want graft || want rea || want claude-mem || want superpowers || want ecc || want playwright || want open-code-review || [ -n "$LANGUAGE" ]; then
@@ -957,12 +839,14 @@ install_rea() {
 install_integration() {
   local key="$1" label="$2" mk="${1//-/_}" managed=0
   want "$key" || { S_skip "$key" "skipped (--skip/--only)"; return; }
-  if ! has_agent claude && ! has_agent codex && ! has_agent hermes; then S_skip "$key" "No supported agent detected"; return; fi
+  if [ "$key" != ai-memory ] && ! has_agent claude && ! has_agent codex && ! has_agent hermes; then S_skip "$key" "No supported agent detected"; return; fi
   if [ "$key" = hermes ] && ! has_agent hermes; then S_skip "$key" "Hermes excluded by --agents"; return; fi
   S_begin "$key" "$label"
   if [ "$DRY" = 1 ]; then
     if [ "$key" = hermes ]; then
       ok "[dry-run] would install Hermes from its official stable installer (--non-interactive), wire repository MCPs and the vault skill; provider login stays interactive"
+    elif [ "$key" = ai-memory ]; then
+      ok "[dry-run] would install ai-memory $AI_MEMORY_VERSION and configure detected supported agents; existing vault notes stay unchanged"
     else
       ok "[dry-run] would configure $key for supported detected clients; existing integrations preserved"
     fi
@@ -979,6 +863,12 @@ install_integration() {
       python3 "$INTEGRATIONS_LIB" owned "$key" --state-dir "$MB_HOME/state" && managed=1
       mf_put "MANAGED_$mk" "$managed"; mf_put "PRESENT_$mk" 1
       ok "$key ready; ownership recorded"
+      if [ "$key" = ai-memory ] && has_agent claude && plugin_present claude-mem@thedotmack; then
+        if run_logged claude plugin uninstall claude-mem@thedotmack --keep-data; then
+          ok "replaced legacy Claude memory plugin; its data stays on disk"
+          mf_put_exact MANAGED_claude_mem 0; mf_put PRESENT_claude_mem 0
+        else fail "could not replace the legacy Claude memory plugin"; fi
+      fi
     else fail "$key installation (see $LOGFILE)"; fi
   fi
   S_end
@@ -1108,9 +998,10 @@ do_install() {
     S_end
   else S_skip cbm "skipped (--skip/--only)"; fi
 
+  # Agent memory
+  install_integration ai-memory "ai-memory (shared agent memory)"
   # Plugins
   install_rea
-  install_plugin claude-mem "claude-mem (persistent memory)" thedotmack/claude-mem claude-mem@thedotmack claude_mem
   install_plugin superpowers "superpowers (process skills)" anthropics/claude-plugins-official superpowers@claude-plugins-official superpowers
   install_plugin ecc "ECC (agents, skills, hooks)" https://github.com/affaan-m/ECC.git ecc@ecc ecc
   install_text_to_cad
@@ -1147,16 +1038,17 @@ do_install() {
   if [ "$DRY" = 1 ]; then
     ok "[dry-run] would install sync script, timer (48h) and the megabrain command"
   else
+    # Stop the old mirror timer but keep every existing vault note.
+    if [ "$(mf_get MANAGED_sync)" = 1 ]; then
+      if unschedule_sync; then
+        mf_put SYNC_METHOD "disabled"
+        ok "legacy memory mirror stopped; vault notes kept"
+      else fail "could not stop the legacy memory mirror"; fi
+    fi
     # Repository tools may have been installed after the first Hermes pass.
     if want hermes && has_agent hermes && have hermes && ensure_integrations_lib; then
       run_logged python3 "$INTEGRATIONS_LIB" install hermes --agents hermes --state-dir "$MB_HOME/state" --vault-dir "$VAULT_DIR" \
         && ok "Hermes repository tools connected" || fail "Hermes tool wiring"
-    fi
-    if want vault; then
-      if install_sync; then ok "sync script installed"; else fail "sync script"; fi
-      "$SYNC_BIN" >>"$LOGFILE" 2>&1 && ok "first sync done"
-      if schedule_sync; then ok "scheduled every 48h ($SYNC_METHOD)"; mf_put SYNC_METHOD "$SYNC_METHOD"; mf_put MANAGED_sync 1
-      else warn "no systemd/launchd/cron: run 'megabrain sync' when you want"; mf_put MANAGED_sync 1; fi
     fi
     if install_cli; then ok "command installed: megabrain"; mf_put MANAGED_cli 1
     else warn "could not install the megabrain command"; fi
@@ -1258,7 +1150,9 @@ do_uninstall() {
   # sync
   CUR=sync; STEP_FAILED=0
   if [ "$(mf_get MANAGED_sync)" = 1 ]; then
-    emit begin sync; unschedule_sync; ok "timer removed, script deleted"; S_end
+    emit begin sync
+    if unschedule_sync; then ok "timer removed, script deleted"; else fail "legacy sync cleanup"; fi
+    S_end
   else emit skip sync "not installed by MEGABRAIN"; fi
 
   # rtk
