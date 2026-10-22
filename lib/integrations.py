@@ -353,9 +353,7 @@ an explicit user login; inspect provider billing before authorizing paid usage.
                                          "name": str(event), "agent": "hermes",
                                          "added": additions}
             self.save()
-        self.native("ai-memory", "hermes-config", "hooks_auto_accept",
-                    [["hermes", "config", "set", "hooks_auto_accept", "true", "--force"]],
-                    ["hermes", "config", "unset", "hooks_auto_accept"], "hermes")
+        self.run(["ai-memory", "install-skills", "--scope", "global", "--agent", "hermes"])
 
     def browser(self):
         for name in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]:

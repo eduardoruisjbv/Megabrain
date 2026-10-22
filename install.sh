@@ -869,6 +869,10 @@ install_integration() {
       python3 "$INTEGRATIONS_LIB" owned "$key" --state-dir "$MB_HOME/state" && managed=1
       mf_put "MANAGED_$mk" "$managed"; mf_put "PRESENT_$mk" 1
       ok "$key ready; ownership recorded"
+      if [ "$key" = ai-memory ]; then
+        has_agent codex && ok "Codex: open /hooks and trust the ai-memory hooks before capture"
+        has_agent hermes && ok "Hermes: accept the ai-memory hooks on next start if prompted"
+      fi
       if [ "$key" = ai-memory ] && has_agent claude && plugin_present claude-mem@thedotmack; then
         if run_logged claude plugin uninstall claude-mem@thedotmack --keep-data; then
           ok "replaced legacy Claude memory plugin; its data stays on disk"

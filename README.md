@@ -124,7 +124,10 @@ Playwright/Firecrawl components also register with Hermes. The compatible curate
 Markdown collections, Mimic and Mac runner skills install into `~/.hermes/skills`;
 Open Code Review uses its CLI and a Hermes skill. Native Claude/Codex plugins
 (including Knowledge Work) are not loaded into Hermes. ai-memory configures
-Hermes hooks and MCP through its supported interfaces.
+Hermes hooks and MCP through its supported interfaces. It installs the Hermes
+skills and preserves Hermes' hook acceptance setting. If Hermes asks to accept
+the hooks, approve them when it starts. Codex may mark its hooks as untrusted.
+Open Codex, run `/hooks`, and trust the ai-memory hooks before capture can start.
 
 The `megabrain` skill points Hermes at your selected vault and instructs it to
 retrieve only relevant notes from the knowledge vault. Agent memory is managed

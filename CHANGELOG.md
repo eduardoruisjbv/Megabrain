@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replace the Claude-only claude-mem plugin and scheduled cross-agent mirrors
   with ai-memory 3.1.0 for supported detected agents.
 - Configure Hermes hooks and MCP through its native configuration command while
-  preserving unrelated settings and user-edited hooks.
+  preserving unrelated settings and user-edited hooks. Install Hermes skills
+  and preserve the user's hook-acceptance setting.
 - Stop the legacy memory timer during migration and keep all existing vault notes
   and archived mirrors. The Markdown vault remains a separate knowledge store.
 - Keep legacy claude-mem data on disk when replacing its plugin.
