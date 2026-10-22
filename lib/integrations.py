@@ -293,6 +293,11 @@ an explicit user login; inspect provider billing before authorizing paid usage.
             for name in automatic:
                 command.extend(["--agent", name])
             self.run(command)
+            # Re-apply native hooks explicitly. Some existing plugin installs
+            # make `setup` skip settings-file hooks, while this command is
+            # idempotent and writes only ai-memory-owned entries.
+            for name in automatic:
+                self.run(["ai-memory", "install-hooks", "--agent", name, "--apply"])
         if "hermes" in supported:
             self.install_ai_memory_hermes()
         for name in sorted(self.detected_agents - set(agent_names)):
