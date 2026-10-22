@@ -3,7 +3,7 @@
 MEGABRAIN uses a Bash engine, a Python renderer and an isolated skill installer.
 
 ```
-install.sh        engine: detection, install, vault, sync, manifest, uninstall
+install.sh        engine: detection, install, vault, memory migration, manifest, uninstall
 lib/ui.py         renderer: animation, progress panel, Yes/No selector (no side effects)
 lib/brain_energize.py   braille brain frames used by the renderer
 lib/skills.py     public skill archives, discovery metadata, routing and ownership
@@ -23,7 +23,7 @@ install.sh
  ├─ detect OS, package manager, agents      (existence checks only)
  ├─ pre-flight: curl/git/node/npm            (plain text, may ask for sudo)
  ├─ start lib/ui.py                          (if TTY + python3; otherwise plain mode)
- ├─ steps: environment → agents → rtk → graft → cbm → rea → claude-mem
+ ├─ steps: environment → agents → ai-memory → rtk → graft → cbm → rea
  │         → superpowers → ecc → text-to-cad
  │         → claude-code-setup → playwright → firecrawl → mimic
  │         → open-code-review → mac-agent → security-audit → claude-red → skills-auto

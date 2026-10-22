@@ -45,12 +45,12 @@ CODES = {"bold": "1", "dim": "2", "inverse": "7", "red": "31", "green": "32",
 INSTALL_STEPS = [
     ("environment", "Environment", "curl, git, node, npm, disk space"),
     ("agents", "Agents", "scanning for coding agents"),
-    ("hermes", "Hermes Agent", "official stable runtime · local memory · vault integration"),
+    ("hermes", "Hermes Agent", "official stable runtime · agent memory and knowledge vault"),
+    ("ai-memory", "ai-memory", "shared persistent memory for detected agents"),
     ("rtk", "RTK", "token-optimized command proxy"),
     ("graft", "graft", "repository context graph"),
     ("cbm", "codebase-memory", "structural graph · sqlite engine"),
     ("rea", "REA", "reverse engineering tools · MCP + agent skill"),
-    ("claude-mem", "claude-mem", "persistent memory · worker + vector store"),
     ("superpowers", "superpowers", "process skills pack"),
     ("ecc", "ECC", "agents, skills and hooks · profile standard"),
     ("text-to-cad", "text-to-cad", "local CAD tools for Codex and Claude Code"),
@@ -67,15 +67,15 @@ INSTALL_STEPS = [
     ("workflow-skills", "Workflow skills", "find-skills and grill-me"),
     ("skills-auto", "Skill selection", "automatically select skills relevant to each task"),
     ("vault", "Vault", "memory backup vault"),
-    ("wiring", "Wiring", "memory sync, CLI and manifest"),
+    ("wiring", "Wiring", "memory migration, CLI and manifest"),
 ]
 UNINSTALL_STEPS = [
-    ("sync", "Sync timer", "stopping the 48h memory sync"),
+    ("sync", "Legacy memory mirror", "stopping the old timer and keeping its notes"),
     ("rtk", "RTK", "removing hooks and binary"),
     ("graft", "graft", "removing MCP server and package"),
     ("cbm", "codebase-memory", "removing binary and agent configs"),
     ("rea", "REA", "removing MEGABRAIN-managed registrations and skill"),
-    ("claude-mem", "claude-mem", "removing plugin (data kept)"),
+    ("ai-memory", "ai-memory", "removing only owned integrations"),
     ("superpowers", "superpowers", "removing plugin"),
     ("ecc", "ECC", "removing plugin"),
     ("claude-code-setup", "Claude Code setup", "removing plugin"),
@@ -92,7 +92,7 @@ UNINSTALL_STEPS = [
     ("open-code-review", "Open Code Review", "removing managed CLI and plugins"),
     ("mac-agent", "Mac SSH runner", "local client cleanup; remote jobs/config kept"),
     ("hermes", "Hermes Agent", "remove owned integrations/runtime; keep memories and logins"),
-    ("vault", "Vault", "your memories are kept unless you say so"),
+    ("vault", "Vault", "your knowledge notes are kept unless you say so"),
     ("marker", "Marker", "removing manifest and CLI"),
 ]
 
@@ -294,7 +294,7 @@ def bottom_rows(st, now):
 def right_panel(st, now):
     label = {"install": "installer", "uninstall": "uninstaller", "installed": "status"}[st.mode]
     sub = {
-        "install": "token-saving + memory stack · memory backup vault",
+        "install": "token-saving tools · shared agent memory · knowledge vault",
         "uninstall": "removes only what MEGABRAIN installed · data kept",
         "installed": "MEGABRAIN is set up on this machine",
     }[st.mode]
@@ -466,11 +466,11 @@ class DemoSource(object):
             ("environment", 1.8, [(0.4, "curl, git, node, npm detected"), (0.85, "disk check: space available")]),
             ("agents", 2.0, [(0.4, "detected: " + ag), (0.85, "plan: install for all detected agents")]),
             ("hermes", 2.0, [(0.4, "official stable runtime installed or preserved"), (0.85, "local memory and vault skill connected; provider login stays interactive")]),
+            ("ai-memory", 2.8, [(0.3, "installing pinned ai-memory release"), (0.6, "configuring detected agent memory hooks"), (0.85, "knowledge vault preserved")]),
             ("rtk", 2.3, [(0.3, "fetching rtk binary"), (0.6, "installing to ~/.local/bin/rtk"), (0.85, "rtk init -g: hooks registered")]),
             ("graft", 2.8, [(0.3, "npm install -g @nanonets/graft"), (0.6, "mcp server graft registered"), (0.85, "statusline + hooks ready")]),
             ("cbm", 3.2, [(0.3, "fetching codebase-memory-mcp"), (0.6, "verifying checksum: ok"), (0.85, "hook-augment wired for detected clients")]),
             ("rea", 2.4, [(0.3, "installing rea-agents CLI if needed"), (0.65, "configuring detected clients"), (0.9, "MCP registrations and skill ready")]),
-            ("claude-mem", 2.8, [(0.3, "adding marketplace thedotmack/claude-mem"), (0.6, "starting worker and vector store"), (0.85, "memory database initialized (empty)")]),
             ("superpowers", 1.8, [(0.4, "adding marketplace claude-plugins-official"), (0.85, "plugin superpowers enabled")]),
             ("ecc", 2.6, [(0.3, "adding marketplace affaan-m/ECC"), (0.6, "resolving agents and skills"), (0.85, "hook profile: standard")]),
             ("text-to-cad", 2.8, [(0.3, "adding official marketplace for detected agents"), (0.65, "installing CAD tools and viewer plugin"), (0.9, "ready on first Codex or Claude Code session")]),
@@ -488,7 +488,7 @@ class DemoSource(object):
             ("skills-auto", 1.4, [(0.4, "backing up routing and invocation metadata"), (0.85, "relevant skills selected automatically; normal permissions kept")]),
             ("vault", 3.2, [(0.15, "creating hidden vault ~/.megabrain/vault"), (0.4, "PARA tree: Inbox · Projetos · Áreas · Recursos · Arquivo"),
                             (0.65, "seeding MAPA.md, AGENTS.md, Templates/"), (0.88, "writing .obsidian/graph.json")]),
-            ("wiring", 2.5, [(0.2, "installing memory sync script"), (0.4, "sync timer armed: every 48h"),
+            ("wiring", 2.5, [(0.2, "stopping legacy memory mirror"), (0.4, "knowledge vault preserved"),
                              (0.6, "installing the `megabrain` command"),
                              (0.92, "manifest written")]),
         ]
@@ -535,7 +535,7 @@ class DemoSource(object):
             ("graft", 1.8, [(0.4, "mcp server removed"), (0.8, "npm uninstall -g @nanonets/graft")]),
             ("cbm", 1.8, [(0.5, "agent configs removed"), (0.8, "indexes kept")]),
             ("rea", 1.6, [(0.4, "managed registrations and skill removed"), (0.8, "REA data kept")]),
-            ("claude-mem", 1.6, [(0.5, "plugin removed (data kept)")]),
+            ("ai-memory", 1.6, [(0.5, "only unchanged owned settings removed")]),
             ("superpowers", 1.2, [(0.5, "plugin removed")]),
             ("ecc", 1.4, [(0.5, "plugin removed")]),
             ("claude-code-setup", 1.2, [(0.5, "plugin removed")]),
