@@ -561,7 +561,7 @@ install_sync() {
     printf 'MB_HOME="%s"\n' "$MB_HOME"
     cat <<'EOF'
 DEST="$VAULT/03-Recursos/IA"
-[ -d "$VAULT" ] || exit 0
+[ -d "$VAULT" ] || { printf 'MEGABRAIN vault unavailable: %s\n' "$VAULT" >&2; exit 2; }
 if command -v python3 >/dev/null 2>&1 && [ -f "$MB_HOME/lib/sync_memories.py" ]; then
   exec python3 "$MB_HOME/lib/sync_memories.py" --vault "$VAULT" --state-dir "$MB_HOME/state"
 fi

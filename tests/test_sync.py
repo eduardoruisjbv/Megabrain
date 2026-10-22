@@ -1,6 +1,7 @@
 """Vault mirror: curated sources, Graft cards and preserved vault edits, in a temporary home."""
 from pathlib import Path
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -100,6 +101,16 @@ class SyncTest(unittest.TestCase):
         with patch.dict(os.environ, {"HERMES_HOME": str(profile)}):
             self.sync()
         self.assertEqual((self.mirror / "Hermes/MEMORY.md").read_text(), "custom profile")
+
+    def test_unmounted_vault_is_reported_without_creating_a_replacement(self):
+        missing = self.home / "unmounted-drive/vault"
+        result = subprocess.run([sys.executable, str(Path(sync_memories.__file__)),
+                                 "--home", str(self.home), "--vault", str(missing), "--state-dir", str(self.state)],
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("vault unavailable", result.stderr)
+        self.assertFalse(missing.exists())
+        self.assertFalse(self.state.exists())
 
 
 if __name__ == "__main__":

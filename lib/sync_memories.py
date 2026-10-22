@@ -140,7 +140,8 @@ def main():
     args = parser.parse_args()
     vault = Path(args.vault)
     if not vault.is_dir():
-        return 0
+        print("MEGABRAIN vault unavailable: " + str(vault), file=sys.stderr)
+        return 2
     print(json.dumps(sync(Path(args.home), vault, Path(args.state_dir), args.dry_run)))
     return 0
 
