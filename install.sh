@@ -1268,7 +1268,7 @@ do_uninstall() {
   local integration
   for integration in playwright firecrawl mimic open-code-review mac-agent; do
     CUR="$integration"; STEP_FAILED=0
-    if [ -f "$MB_HOME/state/integrations.json" ] || [ -f "$MB_HOME/state/skills.json" ]; then
+    if grep -qs "\"component\": \"$integration\"" "$MB_HOME/state/integrations.json" "$MB_HOME/state/skills.json"; then
       emit begin "$integration"
       if have python3 && ensure_integrations_lib; then
         run_logged python3 "$INTEGRATIONS_LIB" uninstall "$integration" --state-dir "$MB_HOME/state" \
@@ -1361,7 +1361,7 @@ main() {
       if [ ! -f "$client" ]; then
         echo "Install the mac-agent component first: bash install.sh --force --only mac-agent" >&2; return 1
       fi
-      python3 "$client" "${MAC_ARGS[@]}"; return $? ;;
+      python3 "$client" ${MAC_ARGS[@]+"${MAC_ARGS[@]}"}; return $? ;;
     mark-installed) cmd_mark_installed; return $? ;;
     uninstall)
       if ! [ -f "$MANIFEST" ]; then echo "MEGABRAIN is not installed on this machine."; return 1; fi

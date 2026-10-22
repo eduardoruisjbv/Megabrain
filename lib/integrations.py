@@ -214,13 +214,17 @@ class Manager:
                 self.native(component, "plugin", name, install, remove, agent)
         elif component == "mac-agent":
             destination = self.state_dir / "mac-runtime"
-            if not exists(destination):
-                destination.mkdir(parents=True)
+            entry = self.skills.data["entries"].get(str(destination.absolute()))
+            if exists(destination) and entry is None:
+                raise ValueError("Unmanaged Mac runtime preserved: " + str(destination))
+            if not exists(destination) or digest(destination) == entry.get("after"):
+                # Refresh an unchanged managed runtime so upgrades ship the new client/worker.
+                destination.mkdir(parents=True, exist_ok=True)
                 for name in ["mac_agent.py", "mac_worker.py"]:
                     shutil.copy2(Path(__file__).with_name(name), destination / name)
                 self.skills.remember(destination, component, "directory", after=digest(destination))
-            elif str(destination.absolute()) not in self.skills.data["entries"]:
-                raise ValueError("Unmanaged Mac runtime preserved: " + str(destination))
+            else:
+                print("Kept modified Mac runtime: " + str(destination))
             target = self.home / ".local/bin/mac-agent"
             if not exists(target):
                 # A wrapper uses the Python available on this machine, not the
@@ -234,10 +238,17 @@ class Manager:
             print("Mac client ready. Configure an existing SSH alias with: megabrain mac configure YOUR_SSH_ALIAS")
 
     def uninstall(self, component):
+        unchecked = []
         for key, item in list(self.data["entries"].items()):
             if item["component"] != component:
                 continue
-            current = self.probe(item)
+            try:
+                current = self.probe(item)
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+                # e.g. the agent CLI was removed: keep the ledger entry, still clean the rest.
+                print("Could not check " + key + "; ownership kept: " + str(error), file=sys.stderr)
+                unchecked.append(key)
+                continue
             if current is None or current == item["after"]:
                 if current is not None:
                     self.run(item["remove"])
@@ -246,6 +257,8 @@ class Manager:
             else:
                 print("Kept modified integration: " + key)
         print(json.dumps(self.skills.uninstall(component)))
+        if unchecked:
+            raise RuntimeError("Integration entries could not be checked: " + ", ".join(unchecked))
 
     def owned(self, component):
         return bool(self.skills.owned(component) or any(x["component"] == component for x in self.data["entries"].values()))

@@ -229,7 +229,15 @@ def dispatch(request):
     if action == 'start':
         return start(request)
     if action == 'list':
-        return [status(path.parent.name) for path in sorted(ROOT.glob('*/job.json'), reverse=True)][:50]
+        jobs = []
+        for path in sorted(ROOT.glob('*/job.json'), reverse=True):
+            try:
+                jobs.append(status(path.parent.name))
+            except (ValueError, KeyError, OSError):
+                continue  # not a MEGABRAIN job directory, or unreadable metadata
+            if len(jobs) == 50:
+                break
+        return jobs
     directory = job_dir(request['id'])
     meta = status(request['id'])
     if action == 'status':
