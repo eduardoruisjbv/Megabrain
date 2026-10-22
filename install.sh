@@ -65,6 +65,8 @@ fi
 CMD="install"; DRY=0; YES=0; FORCE=0; NO_ANIM=0; LIST_ONLY=0; PURGE_VAULT=0
 LANGUAGE=""; AGENTS_OVERRIDE=""; OBSIDIAN_MODE="ask"; SKIP=" "; ONLY=" "
 VAULT_DIR="${MEGABRAIN_VAULT:-$MB_HOME/vault}"
+VAULT_DIR_OVERRIDE=0
+[ -n "${MEGABRAIN_VAULT:-}" ] && VAULT_DIR_OVERRIDE=1
 
 MAC_ARGS=()
 if [ "${1:-}" = mac ]; then
@@ -86,7 +88,7 @@ while [ $# -gt 0 ]; do
     --skip) SKIP="$SKIP${2:-} "; shift ;;
     --only) ONLY="$ONLY${2:-} "; shift ;;
     --language) LANGUAGE="${2:-}"; shift ;;
-    --vault-dir) VAULT_DIR="${2:-}"; shift ;;
+    --vault-dir) VAULT_DIR="${2:-}"; VAULT_DIR_OVERRIDE=1; shift ;;
     --obsidian) OBSIDIAN_MODE="${2:-ask}"; shift ;;
     --purge-vault) PURGE_VAULT=1 ;;
     --force) FORCE=1 ;;
@@ -302,13 +304,17 @@ mf_reset_keep_owned() { # start a fresh manifest, carrying over what MEGABRAIN o
   mkdir -p "$MB_HOME"
   local tmp; tmp="$(mktemp "$MB_HOME/.manifest.XXXXXX")"
   if [ -f "$MANIFEST" ]; then
-    grep -E '^(MANAGED_[A-Za-z_]+|MCPADD_[A-Za-z_]+)="1"$|^(AGENTS|SYNC_METHOD|UPDATE_METHOD|AUTO_UPDATE)=' "$MANIFEST" > "$tmp"
+    grep -E '^(MANAGED_[A-Za-z_]+|MCPADD_[A-Za-z_]+)="1"$|^(AGENTS|VAULT_DIR|SYNC_METHOD|UPDATE_METHOD|AUTO_UPDATE)=' "$MANIFEST" > "$tmp"
   fi
   mv "$tmp" "$MANIFEST"
 }
 
 SKILL_COMPONENTS="security-audit claude-red design-skills writing-skills workflow-skills"
 INTEGRATIONS="ai-memory playwright firecrawl mimic open-code-review mac-agent hermes"
+
+if [ "$VAULT_DIR_OVERRIDE" = 0 ] && [ -n "$(mf_get VAULT_DIR)" ]; then
+  VAULT_DIR="$(mf_get VAULT_DIR)"
+fi
 
 present_list() {
   local out="environment,agents" k
@@ -1034,9 +1040,9 @@ do_install() {
   else S_skip vault "skipped (--skip/--only)"; fi
 
   # wiring: sync, CLI, preferences, manifest
-  S_begin wiring "Wiring (sync, CLI, manifest)" "memory sync, CLI and manifest"
+  S_begin wiring "Wiring (memory migration, CLI, manifest)" "memory migration, CLI and manifest"
   if [ "$DRY" = 1 ]; then
-    ok "[dry-run] would install sync script, timer (48h) and the megabrain command"
+    ok "[dry-run] would stop the legacy mirror timer, preserve the vault path and install the megabrain command"
   else
     # Stop the old mirror timer but keep every existing vault note.
     if [ "$(mf_get MANAGED_sync)" = 1 ]; then
