@@ -4,7 +4,7 @@
 
 **One command that gives every AI coding agent on your machine token-saving tools and a long-term memory vault.**
 
-![Version](https://img.shields.io/badge/version-1.0.2-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey)
 ![Shell](https://img.shields.io/badge/shell-bash-4EAA25)
@@ -70,8 +70,9 @@ bash install.sh --dry-run --no-anim   # exact list of steps it would run
 
 | Component | What it does | Installed for |
 |---|---|---|
+| [**Hermes Agent**](https://github.com/NousResearch/hermes-agent) | Installs the official stable CLI, connects available repository MCPs and adds a vault context skill | default automatic detection, or explicit `--agents hermes` |
 | [**RTK**](https://github.com/rtk-ai/rtk) | Compresses command output before it reaches the model (typically 60–90% fewer tokens on `grep`, `git`, `ls`…) | every detected agent that supports hooks |
-| [**graft**](https://www.npmjs.com/package/@nanonets/graft) | A graph of your repo (symbols, callers, spans) so agents read less code | MCP server for Claude Code and Codex; `graft init` per repo |
+| [**graft**](https://www.npmjs.com/package/@nanonets/graft) | A graph of your repo (symbols, callers, spans) so agents read less code | MCP server for Claude Code, Codex and Hermes; `graft init` per repo |
 | [**codebase-memory-mcp**](https://github.com/DeusData/codebase-memory-mcp) | Structural code knowledge graph (SQLite) with search, tracing and impact analysis | every client it supports |
 | [**claude-mem**](https://github.com/thedotmack/claude-mem) | Persistent memory across sessions | Claude Code |
 | [**superpowers**](https://github.com/anthropics/claude-plugins-official) | Process skills (brainstorming, debugging, planning…) | Claude Code |
@@ -79,20 +80,20 @@ bash install.sh --dry-run --no-anim   # exact list of steps it would run
 | [**text-to-cad**](https://github.com/earthtojake/text-to-cad) | Local CAD workflows and viewer for generating STEP, GLB, STL and 3MF models | Codex and Claude Code |
 | [**claude-code-setup**](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup) | Read-only, project-specific recommendations for Claude Code hooks, skills, MCP servers and agents | Claude Code |
 | [**REA**](https://github.com/morluto/rea) | Reverse engineering workflows, MCP registrations and agent skill | detected supported agents (including Codex, Claude Code and Claude Desktop) |
-| [**Playwright**](https://github.com/microsoft/playwright-mcp) | Browser MCP with isolated, headless sessions; reuses Chrome/Chromium or downloads matching Chromium | Codex and Claude Code |
-| [**Firecrawl**](https://docs.firecrawl.dev/mcp-server) | Keyless HTTP MCP for web search, scraping and parsing, within daily limits | Codex and Claude Code |
+| [**Playwright**](https://github.com/microsoft/playwright-mcp) | Browser MCP with isolated, headless sessions; reuses Chrome/Chromium or downloads matching Chromium | Codex, Claude Code and Hermes |
+| [**Firecrawl**](https://docs.firecrawl.dev/mcp-server) | Keyless HTTP MCP for web search, scraping and parsing, within daily limits | Codex, Claude Code and Hermes |
 | [**Mimic**](https://github.com/littledivy/mimic) | API capture analysis and Python client generation; CLI, proxy runtime cache and task skill | Codex and Claude Code |
 | [**Open Code Review**](https://github.com/alibaba/open-code-review) | Review CLI and official native plugins; delegated review uses the current agent without an extra LLM key | Codex and Claude Code |
 | **Mac SSH runner** | Persistent Claude/Codex jobs, explicit context, progress, results and resume on your Mac | Codex and Claude Code; user-configured SSH alias |
 | [**Security Audit**](https://github.com/cloudflare/security-audit-skill) | Cloudflare's security guidance and multi-phase code-audit skill, including validators | Codex and Claude Code |
 | [**Claude-Red**](https://github.com/SnailSploit/claude-red) | Security methodology library (79 skills at the pinned revision) | Codex and Claude Code |
-| **Automatic skill selection** | Persistent guidance to select relevant installed skills without naming them in each prompt | Codex and Claude Code |
+| **Automatic skill selection** | Persistent guidance to select relevant installed skills without naming them in each prompt | Codex, Claude Code and Hermes |
 | **Memory vault** | Plain-Markdown vault (PARA layout), mirrored from your agents' memories every 48h | you |
 | [**Obsidian**](https://obsidian.md) *(optional)* | Visualize the vault as a graph | asked at the end |
 
 ### Supported agents
 
-Detected automatically — nothing to configure:
+Detected automatically (individual tools and native plugins support different clients):
 
 `claude` · `codex` · `gemini` · `cursor` · `windsurf` · `opencode` · `kilocode` ·
 `antigravity` · `hermes` · `kiro` · `droid` · `vibe` · `pi` · `copilot` · `cline`
@@ -101,6 +102,46 @@ Detected automatically — nothing to configure:
 bash install.sh --list-agents          # what was detected
 bash install.sh --agents claude,codex  # force a list
 ```
+
+### Hermes installation and integration
+
+With automatic detection, MEGABRAIN also installs Hermes if it is absent, using
+the [official stable source installer](https://hermes-agent.nousresearch.com/docs/getting-started/installation)
+with `--non-interactive`. This includes Hermes' default browser/computer-use
+dependencies. `--skip hermes` skips this bootstrap and core setup; an explicit
+`--agents` list is authoritative, so include `hermes` when you want it configured.
+
+```bash
+bash install.sh -y --agents hermes --only hermes --only vault --only skills-auto
+# Add any other desired components, e.g. --only playwright --only firecrawl
+hermes mcp list
+hermes skills list
+megabrain sync
+```
+
+The core integration registers installed graft and codebase-memory MCPs. Selected
+Playwright/Firecrawl components also register with Hermes. The compatible curated
+Markdown collections, Mimic and Mac runner skills install into `~/.hermes/skills`;
+Open Code Review uses its CLI and a Hermes skill. Native Claude/Codex plugins
+(including claude-mem and Knowledge Work) are not loaded into Hermes. Hermes
+already includes its own debugging, testing and persistent memory tools.
+
+The `megabrain` skill points Hermes at your selected vault and instructs it to
+retrieve only relevant notes. Its own `MEMORY.md` and `USER.md` are mirrored to
+`03-Recursos/IA/Hermes/` every 48h. Existing vault notes and user edits are kept;
+auth files, `.env`, session databases and raw conversations are excluded.
+`HERMES_HOME` is respected for configuration, skills and memory sources. A
+removable vault must be mounted before a sync can run.
+
+Authentication remains a user login: use `hermes auth add PROVIDER`, then
+`hermes model` to choose the model. A new runtime disables adoption of other
+CLIs' logins; existing provider settings and credentials are preserved. Installing
+MEGABRAIN does not make a model request, authorize paid usage or start a messaging
+gateway. Skill-selection guidance is appended to Hermes' existing `SOUL.md`.
+
+Uninstall removes only unchanged MCP settings and skills that MEGABRAIN created.
+It removes Hermes itself only if MEGABRAIN installed it and its launcher/version
+still match; Hermes' normal uninstall keeps configuration, memories and logins.
 
 ## The memory vault
 
@@ -112,7 +153,7 @@ It is just Markdown, so it works with Obsidian, VS Code, Logseq, or `cat`.
 ├── 00-Inbox/            quick capture
 ├── 01-Projetos/         work with a beginning and an end
 ├── 02-Áreas/            ongoing responsibilities
-├── 03-Recursos/IA/      ← your agents' memories are mirrored here (Claude/, Codex/, Gemini/)
+├── 03-Recursos/IA/      ← your agents' memories are mirrored here (Claude/, Codex/, Gemini/, Hermes/)
 ├── 04-Arquivo/          finished
 ├── Diário/Logs de IA/   what each AI session did
 ├── Templates/           project, AI-log and spec templates
@@ -132,7 +173,7 @@ what you want to do:
 
 ```
   MEGABRAIN already installed
-  v1.0.2 · installed 2026-10-20 · claude, codex
+  v1.1.0 · installed 2026-10-21 · claude, codex
   removes only what MEGABRAIN installed · your vault is kept
 
   Uninstall MEGABRAIN?   [ ○ Yes ]  [ ● No ]
@@ -162,7 +203,7 @@ bash uninstall.sh -y --purge-vault   # also delete the vault
 |---|---|
 | `uninstall` · `status` · `sync` · `version` | subcommands |
 | `--agents a,b` | skip detection, use this list |
-| `--skip <item>` / `--only <item>` | `rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red skills-auto vault deps obsidian` |
+| `--skip <item>` / `--only <item>` | `hermes rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red skills-auto vault deps obsidian` |
 | `--obsidian yes\|no` | answer the Obsidian question without asking |
 | `--vault-dir <dir>` | vault location (default `~/.megabrain/vault`) |
 | `--language <lang>` | answer language for Claude Code |
