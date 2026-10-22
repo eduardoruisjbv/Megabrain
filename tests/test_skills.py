@@ -153,17 +153,81 @@ class SkillsTest(unittest.TestCase):
         self.assertEqual(result["kept_modified"], 0)
         self.assertFalse(self.installer.data["entries"])
 
-    def test_download_rejects_archive_traversal_and_symlinks(self):
-        for filename, mode in [("../outside", 0), ("source/link", 0o120777 << 16)]:
-            payload = io.BytesIO()
-            with zipfile.ZipFile(payload, "w") as archive:
+    def archive(self, members):
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            for filename, mode, content in members:
                 item = zipfile.ZipInfo(filename)
                 item.external_attr = mode
-                archive.writestr(item, "untrusted")
-            with mock.patch.object(skills.urllib.request, "urlopen", return_value=io.BytesIO(payload.getvalue())):
-                with self.assertRaisesRegex(ValueError, "Unsafe archive"):
-                    skills.download_collection("security-audit", self.root / "extract")
+                archive.writestr(item, content)
+        return io.BytesIO(payload.getvalue())
+
+    def test_download_rejects_archive_traversal(self):
+        with mock.patch.object(skills.urllib.request, "urlopen", return_value=self.archive([("../outside", 0, "x")])):
+            with self.assertRaisesRegex(ValueError, "Unsafe archive"):
+                skills.download_collection("security-audit", self.root / "extract")
         self.assertFalse((self.root / "outside").exists())
+
+    def test_download_never_materializes_symlinks(self):
+        members = [("source/SKILL.md", 0o100644 << 16, "content"), ("source/link", 0o120777 << 16, "/etc/passwd")]
+        with mock.patch.object(skills.urllib.request, "urlopen", return_value=self.archive(members)):
+            root = skills.download_collection("security-audit", self.root / "extract")
+        self.assertEqual((root / "SKILL.md").read_text(), "content")
+        self.assertFalse((root / "link").exists() or (root / "link").is_symlink())
+
+    def test_root_level_skill_is_named_and_excluded_paths_left_out(self):
+        upstream = self.root / "motion"
+        (upstream / "docs/media").mkdir(parents=True)
+        (upstream / "docs/media/hero.mp4").write_text("large")
+        (upstream / "docs/NOTE.md").write_text("kept")
+        (upstream / "SKILL.md").write_text("---\nname: motionmaxxing\ndescription: Make films.\n---\n")
+        (upstream / "LICENSE").write_text("Apache")
+        sources = {"Tejashmakwana/motionmaxxing": upstream}
+        for repo, name in [("juliobsz/skills", "awwwards"), ("miqdadbadjuber/anti-slop", "skills/antislop"),
+                           ("kaankiziltug/logo-design-skill", "skills/logo-design")]:
+            directory = self.root / repo.replace("/", "_") / name
+            directory.mkdir(parents=True)
+            (directory / "SKILL.md").write_text("---\nname: " + directory.name + "\ndescription: Design.\n---\n")
+            sources[repo] = self.root / repo.replace("/", "_")
+        result = self.installer.install_collection("design-skills", sources)
+        self.assertEqual(result["created"], 4)
+        installed = self.home / ".claude/skills/motionmaxxing"
+        self.assertEqual((installed / "docs/NOTE.md").read_text(), "kept")
+        self.assertFalse((installed / "docs/media").exists())
+        self.assertFalse((installed / "LICENSE.upstream").exists())
+        self.assertTrue((self.home / ".codex/skills/antislop").is_symlink())
+        self.installer.uninstall("design-skills")
+        self.assertFalse(self.installer.owned("design-skills"))
+        self.assertFalse(installed.is_symlink())
+
+    def test_long_non_security_description_gets_no_security_suffix(self):
+        p = self.root / "humanizer/SKILL.md"
+        p.parent.mkdir()
+        p.write_text("---\nname: humanizer\ndescription: " + "Edit prose so it reads human. " * 60 + "\n---\n\nBody.\n")
+        skills.normalize_skill(p, security=False)
+        description = next(line for line in p.read_text().splitlines() if line.startswith("description:"))
+        self.assertNotIn("authorized security", description)
+        self.assertLessEqual(len(json.loads(description.split(":", 1)[1])), 1024)
+
+    def test_update_refreshes_an_older_block_and_keeps_user_edits(self):
+        instructions = self.home / ".claude/CLAUDE.md"
+        instructions.parent.mkdir(parents=True)
+        instructions.write_text("# Mine\n")
+        with mock.patch.object(self.installer, "skill_roots", return_value=[]):
+            self.installer.install_auto()
+        old_block = skills.AUTO_BLOCK.replace("find-skills", "older wording")
+        entry = self.installer.data["entries"][str(instructions)]
+        instructions.write_text(instructions.read_text().replace(skills.AUTO_BLOCK, old_block) + "\nLater user line\n")
+        entry["block"] = old_block
+        with mock.patch.object(self.installer, "skill_roots", return_value=[]):
+            self.installer.install_auto()
+        text = instructions.read_text()
+        self.assertIn(skills.AUTO_BLOCK, text)
+        self.assertNotIn("older wording", text)
+        self.assertIn("Later user line", text)
+        self.installer.uninstall("skills-auto")
+        self.assertNotIn(skills.AUTO_BEGIN, instructions.read_text())
+        self.assertIn("Later user line", instructions.read_text())
 
 
 if __name__ == "__main__":

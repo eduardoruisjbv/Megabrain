@@ -45,6 +45,7 @@ CODES = {"bold": "1", "dim": "2", "inverse": "7", "red": "31", "green": "32",
 INSTALL_STEPS = [
     ("environment", "Environment", "curl, git, node, npm, disk space"),
     ("agents", "Agents", "scanning for coding agents"),
+    ("hermes", "Hermes Agent", "official stable runtime · local memory · vault integration"),
     ("rtk", "RTK", "token-optimized command proxy"),
     ("graft", "graft", "repository context graph"),
     ("cbm", "codebase-memory", "structural graph · sqlite engine"),
@@ -61,6 +62,9 @@ INSTALL_STEPS = [
     ("mac-agent", "Mac SSH runner", "persistent tasks with explicit shared context"),
     ("security-audit", "Security audit", "Cloudflare security guidance and audit skill"),
     ("claude-red", "Claude-Red", "security skills for Codex and Claude Code"),
+    ("design-skills", "Design skills", "awwwards, jury, antislop, logo-design, motionmaxxing"),
+    ("writing-skills", "Writing skills", "humanizer and no-ai-slop"),
+    ("workflow-skills", "Workflow skills", "find-skills and grill-me"),
     ("skills-auto", "Skill selection", "automatically select skills relevant to each task"),
     ("vault", "Vault", "memory backup vault"),
     ("wiring", "Wiring", "memory sync, CLI and manifest"),
@@ -79,11 +83,15 @@ UNINSTALL_STEPS = [
     ("skills-auto", "Skill selection", "restoring unchanged MEGABRAIN configuration"),
     ("security-audit", "Security audit", "removing only unchanged managed skills"),
     ("claude-red", "Claude-Red", "preserving pre-existing or modified skills"),
+    ("design-skills", "Design skills", "removing only unchanged managed skills"),
+    ("writing-skills", "Writing skills", "removing only unchanged managed skills"),
+    ("workflow-skills", "Workflow skills", "removing only unchanged managed skills"),
     ("playwright", "Playwright", "removing unchanged managed MCP registrations"),
     ("firecrawl", "Firecrawl", "preserving existing web extraction settings"),
     ("mimic", "Mimic", "removing managed CLI and skill; caches kept"),
     ("open-code-review", "Open Code Review", "removing managed CLI and plugins"),
     ("mac-agent", "Mac SSH runner", "local client cleanup; remote jobs/config kept"),
+    ("hermes", "Hermes Agent", "remove owned integrations/runtime; keep memories and logins"),
     ("vault", "Vault", "your memories are kept unless you say so"),
     ("marker", "Marker", "removing manifest and CLI"),
 ]
@@ -457,6 +465,7 @@ class DemoSource(object):
         steps = [
             ("environment", 1.8, [(0.4, "curl, git, node, npm detected"), (0.85, "disk check: space available")]),
             ("agents", 2.0, [(0.4, "detected: " + ag), (0.85, "plan: install for all detected agents")]),
+            ("hermes", 2.0, [(0.4, "official stable runtime installed or preserved"), (0.85, "local memory and vault skill connected; provider login stays interactive")]),
             ("rtk", 2.3, [(0.3, "fetching rtk binary"), (0.6, "installing to ~/.local/bin/rtk"), (0.85, "rtk init -g: hooks registered")]),
             ("graft", 2.8, [(0.3, "npm install -g @nanonets/graft"), (0.6, "mcp server graft registered"), (0.85, "statusline + hooks ready")]),
             ("cbm", 3.2, [(0.3, "fetching codebase-memory-mcp"), (0.6, "verifying checksum: ok"), (0.85, "hook-augment wired for detected clients")]),
@@ -473,11 +482,15 @@ class DemoSource(object):
             ("mac-agent", 1.2, [(0.5, "local SSH client ready; configure your own host alias")]),
             ("security-audit", 1.4, [(0.4, "fetching pinned Cloudflare skill and validators"), (0.85, "available to detected Codex and Claude Code clients")]),
             ("claude-red", 1.8, [(0.4, "fetching pinned public skill library"), (0.85, "discovery metadata normalized; existing skills preserved")]),
+            ("design-skills", 1.8, [(0.4, "fetching pinned awwwards, antislop, logo and motion skills"), (0.85, "linked for Codex and Claude Code")]),
+            ("writing-skills", 1.2, [(0.5, "humanizer and no-ai-slop pinned and linked")]),
+            ("workflow-skills", 1.2, [(0.5, "find-skills and grill-me pinned and linked")]),
             ("skills-auto", 1.4, [(0.4, "backing up routing and invocation metadata"), (0.85, "relevant skills selected automatically; normal permissions kept")]),
             ("vault", 3.2, [(0.15, "creating hidden vault ~/.megabrain/vault"), (0.4, "PARA tree: Inbox · Projetos · Áreas · Recursos · Arquivo"),
                             (0.65, "seeding MAPA.md, AGENTS.md, Templates/"), (0.88, "writing .obsidian/graph.json")]),
-            ("wiring", 2.5, [(0.25, "installing memory sync script"), (0.5, "sync timer armed: every 48h"),
-                             (0.75, "installing the `megabrain` command"), (0.92, "manifest written")]),
+            ("wiring", 2.5, [(0.2, "installing memory sync script"), (0.4, "sync timer armed: every 48h"),
+                             (0.6, "installing the `megabrain` command"),
+                             (0.92, "manifest written")]),
         ]
         for step in self._run_steps(steps):
             yield step
@@ -508,7 +521,7 @@ class DemoSource(object):
         yield ("emit", ["meta", "present",
                             ",".join(s[0] for s in INSTALL_STEPS)])
         yes = yield ("ask", ["uninstall", "MEGABRAIN already installed",
-                             "v1.0.2 · installed 2026-10-20 · " + ", ".join(self.agents),
+                             "v1.1.0 · installed 2026-10-21 · " + ", ".join(self.agents),
                              "removes only what MEGABRAIN installed · vault is kept",
                              "Uninstall MEGABRAIN?", "no"])
         if not yes:
@@ -530,6 +543,9 @@ class DemoSource(object):
             ("skills-auto", 1.2, [(0.5, "unchanged routing and invocation settings restored")]),
             ("security-audit", 1.2, [(0.5, "unchanged managed skill removed")]),
             ("claude-red", 1.4, [(0.5, "managed links removed; user-modified skill files kept")]),
+            ("design-skills", 1.0, [(0.5, "managed links removed")]),
+            ("writing-skills", 1.0, [(0.5, "managed links removed")]),
+            ("workflow-skills", 1.0, [(0.5, "managed links removed")]),
             ("playwright", 1.2, [(0.5, "unchanged managed MCP registrations removed")]),
             ("firecrawl", 1.2, [(0.5, "existing Firecrawl settings preserved")]),
             ("mimic", 1.2, [(0.5, "managed CLI and skill removed; caches kept")]),
@@ -642,7 +658,7 @@ def main():
     ap = argparse.ArgumentParser(description="MEGABRAIN terminal UI (renderer only)")
     ap.add_argument("--events")
     ap.add_argument("--answers")
-    ap.add_argument("--version", default="1.0.2")
+    ap.add_argument("--version", default="1.1.0")
     ap.add_argument("--watch-pid", type=int, default=0)
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--installed", action="store_true")

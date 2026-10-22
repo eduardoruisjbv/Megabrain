@@ -5,9 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-10-22
 
 ### Added
+- Install Hermes Agent from its official stable installer on new machines; honor
+  explicit agent selections and `--skip hermes`. Preserve existing runtimes.
+- Connect Hermes to repository, browser and web MCPs; install compatible Markdown
+  skills and a vault retrieval skill without importing another agent's login.
+- Mirror only Hermes MEMORY.md/USER.md into the vault, preserving vault edits.
+- Track Hermes MCP/runtime ownership, keep user-modified settings and preserve
+  memories, provider credentials and configuration on normal runtime removal.
+- Cover Hermes bootstrap, routing, custom vaults, idempotency and rollback offline.
 - Add Playwright MCP, keyless Firecrawl MCP, pinned Mimic CLI and task skill,
   and Open Code Review CLI with native Codex/Claude Code plugins.
 - Add a configurable Mac SSH client and public persistent job worker, explicit

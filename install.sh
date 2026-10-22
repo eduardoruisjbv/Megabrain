@@ -24,7 +24,7 @@
 #
 # Options:
 #   --agents a,b,c       skip detection and use this list (e.g. claude,codex)
-#   --skip <item>        skip: rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red skills-auto vault deps obsidian
+#   --skip <item>        skip: hermes rtk graft cbm rea claude-mem superpowers ecc text-to-cad claude-code-setup playwright firecrawl mimic open-code-review mac-agent security-audit claude-red design-skills writing-skills workflow-skills skills-auto vault deps obsidian
 #   --only <item>        install only this item (repeatable)
 #   --language <lang>    answer language for Claude Code (default: unchanged)
 #   --vault-dir <dir>    vault location (default: ~/.megabrain/vault, hidden)
@@ -40,7 +40,7 @@
 
 set -uo pipefail
 
-MB_VERSION="1.0.2"
+MB_VERSION="1.1.0"
 MB_REPO="eduardoruisjbv/Megabrain"
 MB_REF="${MEGABRAIN_REF:-main}"
 MB_RAW="https://raw.githubusercontent.com/${MB_REPO}/${MB_REF}"
@@ -263,20 +263,67 @@ ensure_integrations_lib() {
   INTEGRATIONS_LIB="$tmp/integrations.py"; SKILLS_LIB="$tmp/skills.py"
 }
 
+SYNC_LIB=""
+ensure_sync_lib() {
+  local d tmp
+  for d in "$SELF_DIR/lib" "$SELF_DIR" "$MB_HOME/lib"; do
+    if [ -n "$d" ] && [ -f "$d/sync_memories.py" ]; then SYNC_LIB="$d/sync_memories.py"; return 0; fi
+  done
+  have curl || return 1
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/megabrain-sync-lib.XXXXXX")" || return 1
+  if curl -fsSL --max-time 30 "$MB_RAW/lib/sync_memories.py" -o "$tmp/sync_memories.py" >>"$LOGFILE" 2>&1; then
+    SYNC_LIB="$tmp/sync_memories.py"; return 0
+  fi
+  rm -rf "$tmp"; return 1
+}
+
+copy_atomic() { # copy_atomic <src> <dest>   a new inode, so a running copy of a script keeps working
+  [ "$1" = "$2" ] && return 0
+  local tmp; tmp="$(mktemp "$(dirname "$2")/.mb-copy.XXXXXX")" || return 1
+  cp "$1" "$tmp" || { rm -f "$tmp"; return 1; }
+  chmod "$(stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1")" "$tmp" 2>/dev/null
+  mv "$tmp" "$2"
+}
+
 # ---------- manifest (how MEGABRAIN knows it is installed) ----------
 mf_get() { [ -f "$MANIFEST" ] || return 0; sed -n "s/^$1=//p" "$MANIFEST" | head -1 | sed 's/^"//; s/"$//'; }
+KEEP_OWNED=0
 mf_put() { # mf_put KEY VALUE
   [ "$DRY" = 1 ] && return 0
+  # On a reinstall or update, "already installed" must not erase the record
+  # that an earlier MEGABRAIN run installed it, or uninstall would leave it.
+  if [ "$KEEP_OWNED" = 1 ] && [ "$2" = 0 ]; then
+    case "$1" in MANAGED_*) [ "$(mf_get "$1")" = 1 ] && return 0 ;; esac
+  fi
   mkdir -p "$MB_HOME"
+  local value="$2" agent
+  if [ "$KEEP_OWNED" = 1 ] && [ "$1" = AGENTS ]; then
+    for agent in $(mf_get AGENTS); do
+      [[ " $value " == *" $agent "* ]] || value="$value $agent"
+    done
+  fi
   local tmp; tmp="$(mktemp "$MB_HOME/.manifest.XXXXXX")"
-  { [ -f "$MANIFEST" ] && grep -v "^$1=" "$MANIFEST"; printf '%s="%s"\n' "$1" "$2"; } > "$tmp"
+  { [ -f "$MANIFEST" ] && grep -v "^$1=" "$MANIFEST"; printf '%s="%s"\n' "$1" "$value"; } > "$tmp"
   mv "$tmp" "$MANIFEST"
 }
 is_installed() { [ -f "$MANIFEST" ] && [ "$(mf_get STATUS)" = "complete" ]; }
 
+mf_reset_keep_owned() { # start a fresh manifest, carrying over what MEGABRAIN owns
+  [ "$DRY" = 1 ] && return 0
+  mkdir -p "$MB_HOME"
+  local tmp; tmp="$(mktemp "$MB_HOME/.manifest.XXXXXX")"
+  if [ -f "$MANIFEST" ]; then
+    grep -E '^(MANAGED_[A-Za-z_]+|MCPADD_[A-Za-z_]+)="1"$|^(AGENTS|SYNC_METHOD|UPDATE_METHOD|AUTO_UPDATE)=' "$MANIFEST" > "$tmp"
+  fi
+  mv "$tmp" "$MANIFEST"
+}
+
+SKILL_COMPONENTS="security-audit claude-red design-skills writing-skills workflow-skills"
+INTEGRATIONS="playwright firecrawl mimic open-code-review mac-agent hermes"
+
 present_list() {
   local out="environment,agents" k
-  for k in rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc text_to_cad claude_code_setup playwright firecrawl mimic open_code_review mac_agent security_audit claude_red skills_auto vault wiring; do
+  for k in hermes rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc text_to_cad claude_code_setup playwright firecrawl mimic open_code_review mac_agent knowledge_work security_audit claude_red design_skills writing_skills workflow_skills skills_auto vault wiring; do
     [ "$(mf_get "PRESENT_$k")" = 1 ] && out="$out,$(printf '%s' "$k" | tr '_' '-')"
   done
   printf '%s' "$out"
@@ -503,7 +550,10 @@ EOF
 SYNC_BIN="$MB_HOME/bin/sync-memories.sh"
 
 install_sync() {
-  mkdir -p "$MB_HOME/bin" "$MB_HOME/state"
+  mkdir -p "$MB_HOME/bin" "$MB_HOME/state" "$MB_HOME/lib"
+  # Curated mirror with Graft cards and preserved vault edits; the shell body
+  # below is the fallback for machines without Python 3.
+  ensure_sync_lib && copy_atomic "$SYNC_LIB" "$MB_HOME/lib/sync_memories.py"
   {
     printf '#!/usr/bin/env bash\n'
     printf '# Mirrors AI agent memories (read-only on the source side) into the vault.\n'
@@ -512,6 +562,9 @@ install_sync() {
     cat <<'EOF'
 DEST="$VAULT/03-Recursos/IA"
 [ -d "$VAULT" ] || exit 0
+if command -v python3 >/dev/null 2>&1 && [ -f "$MB_HOME/lib/sync_memories.py" ]; then
+  exec python3 "$MB_HOME/lib/sync_memories.py" --vault "$VAULT" --state-dir "$MB_HOME/state"
+fi
 
 copy_tree() { # copy_tree <dest-name> <source-dir>
   [ -d "$2" ] || return 0
@@ -536,6 +589,15 @@ if [ -f "$HOME/.gemini/GEMINI.md" ]; then
   mkdir -p "$DEST/Gemini"
   cmp -s "$HOME/.gemini/GEMINI.md" "$DEST/Gemini/GEMINI.md" || cp "$HOME/.gemini/GEMINI.md" "$DEST/Gemini/GEMINI.md"
 fi
+# Hermes has exactly two curated persistent notes; no session or credential files.
+for name in MEMORY.md USER.md; do
+  note="${HERMES_HOME:-$HOME/.hermes}/memories/$name"
+  if [ -f "$note" ]; then
+    mkdir -p "$DEST/Hermes"
+    # The fallback never replaces a vault note; Python handles tracked updates.
+    [ -e "$DEST/Hermes/$name" ] || cp "$note" "$DEST/Hermes/$name"
+  fi
+done
 mkdir -p "$MB_HOME/state"
 date -u +%Y-%m-%dT%H:%M:%SZ > "$MB_HOME/state/last-sync" 2>/dev/null
 exit 0
@@ -610,18 +672,25 @@ unschedule_sync() {
 }
 
 install_cli() { # keep a copy so `megabrain` works from anywhere
-  local dest="$MB_HOME/lib"
+  local dest="$MB_HOME/lib" name
   mkdir -p "$dest" "$HOME/.local/bin"
-  [ -n "$LIB_DIR" ] && cp "$LIB_DIR/ui.py" "$LIB_DIR/brain_energize.py" "$dest/"
-  [ -n "$SKILLS_LIB" ] && [ "$SKILLS_LIB" != "$dest/skills.py" ] && cp "$SKILLS_LIB" "$dest/skills.py"
+  # Atomic copies preserve a running installer while its installed copy is refreshed.
+  if [ -n "$LIB_DIR" ]; then
+    for name in ui.py brain_energize.py; do copy_atomic "$LIB_DIR/$name" "$dest/$name"; done
+  fi
+  [ -n "$SKILLS_LIB" ] && copy_atomic "$SKILLS_LIB" "$dest/skills.py"
+  [ -n "$SYNC_LIB" ] && copy_atomic "$SYNC_LIB" "$dest/sync_memories.py"
   if [ -n "$INTEGRATIONS_LIB" ]; then
-    local source name; source="$(dirname "$INTEGRATIONS_LIB")"
+    local source; source="$(dirname "$INTEGRATIONS_LIB")"
     for name in integrations.py mac_agent.py mac_worker.py; do
-      [ "$source/$name" = "$dest/$name" ] || cp "$source/$name" "$dest/$name"
+      copy_atomic "$source/$name" "$dest/$name"
     done
   fi
-  if [ -n "$SELF" ] && [ -f "$SELF" ]; then cp "$SELF" "$dest/install.sh"
-  else curl -fsSL --max-time 30 "$MB_RAW/install.sh" -o "$dest/install.sh" || return 1; fi
+  if [ -n "$SELF" ] && [ -f "$SELF" ]; then copy_atomic "$SELF" "$dest/install.sh"
+  else
+    local tmp; tmp="$(mktemp "$dest/.mb-copy.XXXXXX")" || return 1
+    curl -fsSL --max-time 30 "$MB_RAW/install.sh" -o "$tmp" && mv "$tmp" "$dest/install.sh" || { rm -f "$tmp"; return 1; }
+  fi
   printf '%s\n' "$MB_VERSION" > "$dest/VERSION"
   chmod +x "$dest/install.sh"
   ln -sf "$dest/install.sh" "$HOME/.local/bin/megabrain"
@@ -666,7 +735,7 @@ cmd_status() {
   echo "vault:     $(mf_get VAULT_DIR)"
   echo "sync:      ${SYNC_METHOD:-$(mf_get SYNC_METHOD)}  (last: $(cat "$MB_HOME/state/last-sync" 2>/dev/null || echo never))"
   local k
-  for k in rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc claude_code_setup playwright firecrawl mimic open_code_review mac_agent security_audit claude_red skills_auto; do
+  for k in hermes rtk graft cbm rea_cli rea_setup claude_mem superpowers ecc claude_code_setup playwright firecrawl mimic open_code_review mac_agent knowledge_work security_audit claude_red design_skills writing_skills workflow_skills skills_auto; do
     printf '  %-14s present=%s  managed-by-megabrain=%s\n' "$k" "$(mf_get "PRESENT_$k")" "$(mf_get "MANAGED_$k")"
   done
   printf '  %-14s present=%s  Claude-managed=%s  Codex-managed=%s\n' "text-to-cad" "$(mf_get PRESENT_text_to_cad)" "$(mf_get MANAGED_text_to_cad_claude)" "$(mf_get MANAGED_text_to_cad_codex)"
@@ -725,6 +794,10 @@ preflight() {
   case "$OS_NAME" in MINGW*|MSYS*|CYGWIN*) fail "Windows shell detected: use WSL (Ubuntu) and run this there"; return 1 ;; esac
   case "$ARCH" in x86_64|amd64|aarch64|arm64) ;; *) warn "architecture $ARCH: some prebuilt binaries may not exist" ;; esac
   detect_agents
+  # Hermes can bootstrap a new machine; an explicit --agents list wins.
+  if want hermes && [ -z "$AGENTS_OVERRIDE" ] && ! has_agent hermes; then
+    DETECTED="${DETECTED:+$DETECTED }hermes"
+  fi
   if [ -z "$DETECTED" ]; then
     warn "no coding agent found. Install one (e.g. Claude Code) or force with --agents claude,codex"
     return 1
@@ -733,7 +806,9 @@ preflight() {
 
   local need="" x
   for x in curl git; do have "$x" || need="$need $x"; done
-  if { has_agent claude || has_agent codex; } && { want security-audit || want claude-red || want skills-auto || want playwright || want firecrawl || want mimic || want open-code-review || want mac-agent; }; then
+  local item needs_python=0
+  for item in $SKILL_COMPONENTS $INTEGRATIONS skills-auto; do want "$item" && needs_python=1; done
+  if { has_agent claude || has_agent codex || has_agent hermes; } && [ "$needs_python" = 1 ]; then
     have python3 || need="$need python3"
   fi
   if want graft || want rea || want claude-mem || want superpowers || want ecc || want playwright || want open-code-review || [ -n "$LANGUAGE" ]; then
@@ -882,10 +957,15 @@ install_rea() {
 install_integration() {
   local key="$1" label="$2" mk="${1//-/_}" managed=0
   want "$key" || { S_skip "$key" "skipped (--skip/--only)"; return; }
-  if ! has_agent claude && ! has_agent codex; then S_skip "$key" "Codex or Claude Code not detected"; return; fi
+  if ! has_agent claude && ! has_agent codex && ! has_agent hermes; then S_skip "$key" "No supported agent detected"; return; fi
+  if [ "$key" = hermes ] && ! has_agent hermes; then S_skip "$key" "Hermes excluded by --agents"; return; fi
   S_begin "$key" "$label"
   if [ "$DRY" = 1 ]; then
-    ok "[dry-run] would install/configure $key for detected Codex/Claude Code clients; existing integrations preserved"
+    if [ "$key" = hermes ]; then
+      ok "[dry-run] would install Hermes from its official stable installer (--non-interactive), wire repository MCPs and the vault skill; provider login stays interactive"
+    else
+      ok "[dry-run] would configure $key for supported detected clients; existing integrations preserved"
+    fi
   elif ! have python3 || ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))'; then
     fail "$key requires Python 3.8 or later"
   elif ! ensure_integrations_lib; then
@@ -895,7 +975,7 @@ install_integration() {
       if want deps && fetch_and_run https://astral.sh/uv/install.sh sh; then hash -r
       else fail "Mimic needs uv: install it first, or allow dependencies"; S_end; return; fi
     fi
-    if run_logged python3 "$INTEGRATIONS_LIB" install "$key" --agents "$DETECTED" --state-dir "$MB_HOME/state"; then
+    if run_logged python3 "$INTEGRATIONS_LIB" install "$key" --agents "$DETECTED" --state-dir "$MB_HOME/state" --vault-dir "$VAULT_DIR"; then
       python3 "$INTEGRATIONS_LIB" owned "$key" --state-dir "$MB_HOME/state" && managed=1
       mf_put "MANAGED_$mk" "$managed"; mf_put "PRESENT_$mk" 1
       ok "$key ready; ownership recorded"
@@ -907,10 +987,10 @@ install_integration() {
 install_skills_component() { # install_skills_component <component> <label>
   local key="$1" label="$2" mk="${1//-/_}" managed=0
   want "$key" || { S_skip "$key" "skipped (--skip/--only)"; return; }
-  if ! has_agent claude && ! has_agent codex; then S_skip "$key" "Codex or Claude Code not detected"; return; fi
+  if ! has_agent claude && ! has_agent codex && ! has_agent hermes; then S_skip "$key" "No supported agent detected"; return; fi
   S_begin "$key" "$label"
   if [ "$DRY" = 1 ]; then
-    ok "[dry-run] would configure $key for detected Codex/Claude Code clients (existing skills preserved)"
+    ok "[dry-run] would configure $key for Codex/Claude/Hermes clients (existing skills preserved)"
   elif ! have python3 || ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))'; then
     fail "$key requires Python 3.8 or later"
   elif ! ensure_skills_lib; then
@@ -944,9 +1024,12 @@ do_install() {
   # --- animation starts here ---
   start_ui install
   if [ "$DRY" = 0 ]; then
-    rm -f "$MANIFEST"
+    mf_reset_keep_owned; KEEP_OWNED=1
     mf_put MEGABRAIN_VERSION "$MB_VERSION"; mf_put INSTALLED_AT "$(now_iso)"
     mf_put SOURCE "install"; mf_put AGENTS "$DETECTED"; mf_put OS "$DISTRO"
+    # Record the selected components and targets for installation diagnostics.
+    mf_put INSTALL_SKIP "$(printf '%s' "$SKIP" | xargs)"; mf_put INSTALL_ONLY "$(printf '%s' "$ONLY" | xargs)"
+    mf_put INSTALL_AGENTS "$AGENTS_OVERRIDE"; mf_put INSTALL_LANGUAGE "$LANGUAGE"
     mf_put STATUS "partial"
   fi
 
@@ -955,6 +1038,9 @@ do_install() {
   S_end
   S_begin agents "Agents" "scanning for coding agents"
   ok "detected: $DETECTED"; S_end
+
+  # Hermes must exist before tools that detect it configure their hooks/MCPs.
+  install_integration hermes "Hermes Agent (official stable runtime, memory and vault skill)"
 
   # RTK
   if want rtk; then
@@ -1036,6 +1122,9 @@ do_install() {
   install_integration mac-agent "Mac SSH task runner and skill"
   install_skills_component security-audit "Cloudflare security audit skill"
   install_skills_component claude-red "Claude-Red security skill library"
+  install_skills_component design-skills "Design skills (awwwards, jury, antislop, logo-design, motionmaxxing)"
+  install_skills_component writing-skills "Writing skills (humanizer, no-ai-slop)"
+  install_skills_component workflow-skills "Workflow skills (find-skills, grill-me)"
   install_skills_component skills-auto "Automatic relevant-skill selection"
 
   # vault
@@ -1055,8 +1144,14 @@ do_install() {
 
   # wiring: sync, CLI, preferences, manifest
   S_begin wiring "Wiring (sync, CLI, manifest)" "memory sync, CLI and manifest"
-  if [ "$DRY" = 1 ]; then ok "[dry-run] would install sync script, timer (48h) and the megabrain command"
+  if [ "$DRY" = 1 ]; then
+    ok "[dry-run] would install sync script, timer (48h) and the megabrain command"
   else
+    # Repository tools may have been installed after the first Hermes pass.
+    if want hermes && has_agent hermes && have hermes && ensure_integrations_lib; then
+      run_logged python3 "$INTEGRATIONS_LIB" install hermes --agents hermes --state-dir "$MB_HOME/state" --vault-dir "$VAULT_DIR" \
+        && ok "Hermes repository tools connected" || fail "Hermes tool wiring"
+    fi
     if want vault; then
       if install_sync; then ok "sync script installed"; else fail "sync script"; fi
       "$SYNC_BIN" >>"$LOGFILE" 2>&1 && ok "first sync done"
@@ -1252,7 +1347,7 @@ do_uninstall() {
   # Restore routing/metadata before checking the owned skill directories.
   # The separate ledger survives --force and selected-component reinstalls.
   local skill_component
-  for skill_component in skills-auto security-audit claude-red; do
+  for skill_component in skills-auto $SKILL_COMPONENTS; do
     CUR="$skill_component"; STEP_FAILED=0
     if [ -f "$MB_HOME/state/skills.json" ]; then
       emit begin "$skill_component"
@@ -1266,7 +1361,7 @@ do_uninstall() {
   done
 
   local integration
-  for integration in playwright firecrawl mimic open-code-review mac-agent; do
+  for integration in $INTEGRATIONS; do
     CUR="$integration"; STEP_FAILED=0
     if grep -qs "\"component\": \"$integration\"" "$MB_HOME/state/integrations.json" "$MB_HOME/state/skills.json"; then
       emit begin "$integration"

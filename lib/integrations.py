@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native Codex/Claude integrations with a persistent ownership ledger."""
+"""Native agent integrations with a persistent ownership ledger."""
 import argparse
 import json
 import os
@@ -9,13 +9,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
 
 from skills import Installer, digest, exists
 
 PLAYWRIGHT = "@playwright/mcp@0.0.83"
 MIMIC = "git+https://github.com/littledivy/mimic.git@8cf998ac0b365806d8e522d34107cc504ecaa345"
 OCR = "@alibaba-group/open-code-review@1.13.2"
-COMPONENTS = ["playwright", "firecrawl", "mimic", "open-code-review", "mac-agent"]
+COMPONENTS = ["playwright", "firecrawl", "mimic", "open-code-review", "mac-agent", "hermes"]
+HERMES_INSTALLER = "https://hermes-agent.nousresearch.com/install.sh"
 SKILL_TEXT = {
     "mimic": """---
 name: mimic
@@ -70,10 +72,11 @@ validation accurately. No all-permissions or sandbox-bypass flags are used.
 
 
 class Manager:
-    def __init__(self, home, state_dir, agents, codex_home=None, runner=None):
+    def __init__(self, home, state_dir, agents, codex_home=None, runner=None, vault_dir=None):
         self.home, self.state_dir = Path(home).absolute(), Path(state_dir).absolute()
-        self.agents = set(agents) & {"claude", "codex"}
+        self.agents = set(agents) & {"claude", "codex", "hermes"}
         self.skills = Installer(home, state_dir, agents, codex_home)
+        self.vault_dir = Path(vault_dir).absolute() if vault_dir else self.state_dir.parent / "vault"
         self.path = self.state_dir / "integrations.json"
         self.data = json.loads(self.path.read_text()) if self.path.exists() else {"version": 1, "entries": {}}
         if self.data.get("version") != 1:
@@ -82,6 +85,7 @@ class Manager:
 
     def run(self, args, json_output=False, env=None):
         environment = dict(os.environ, **(env or {}))
+        environment["HERMES_HOME"] = str(self.skills.hermes_home)
         if args[0] == "codex":
             environment["CODEX_HOME"] = str(self.skills.codex_home)
         if args[0] in ["uv", "uvx"]:
@@ -105,7 +109,14 @@ class Manager:
 
     def probe(self, item):
         kind, agent, name = item["kind"], item.get("agent"), item["name"]
+        if kind == "hermes-rtk":
+            plugin = self.skills.hermes_home / "plugins/rtk-rewrite"
+            if not exists(plugin):
+                return None
+            return {"digest": digest(plugin), "plugins": self.hermes_config("plugins")}
         if kind == "mcp":
+            if agent == "hermes":
+                return self.hermes_config("mcp_servers." + name)
             if agent == "codex":
                 servers = self.run(["codex", "mcp", "list", "--json"], True)
                 return next(({key: value for key, value in x.items() if key != "auth_status"}
@@ -133,6 +144,16 @@ class Manager:
             return None
         raise ValueError("Unknown native integration kind")
 
+    def hermes_config(self, key):
+        result = self.runner(["hermes", "config", "get", key], stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, universal_newlines=True, timeout=30,
+                             env=dict(os.environ, HERMES_HOME=str(self.skills.hermes_home)))
+        if result.returncode == 0:
+            return {"config": result.stdout.strip()}
+        if result.returncode == 1 and (result.stdout + result.stderr).strip() == "Config key not set: " + key:
+            return None
+        raise RuntimeError("Cannot read Hermes configuration for " + key)
+
     def native(self, component, kind, name, install, remove, agent=None):
         key = ":".join([component, agent or "shared", kind, name])
         item = {"component": component, "kind": kind, "name": name, "agent": agent, "remove": remove}
@@ -148,13 +169,87 @@ class Manager:
         self.data["entries"][key] = item
         self.save()
 
-    def builtin_skill(self, component, name):
+    def builtin_skill(self, component, name, text=None):
+        contents = text if text is not None else SKILL_TEXT[name]
+        destination = self.state_dir / "skill-files" / component / name
+        owned = self.skills.data["entries"].get(str(destination))
+        if owned and digest(destination) == owned.get("after"):
+            skill = destination / "SKILL.md"
+            if skill.read_text() != contents:
+                skill.write_text(contents)
+                owned["after"] = digest(destination)
+                self.skills.save()
         with tempfile.TemporaryDirectory(prefix="megabrain-builtin-") as directory:
             root = Path(directory)
             path = root / "skills" / name / "SKILL.md"
             path.parent.mkdir(parents=True)
-            path.write_text(SKILL_TEXT[name])
+            path.write_text(contents)
             self.skills.install_collection(component, source=root)
+
+    def hermes_mcp(self, component, name, config):
+        key = "mcp_servers." + name
+        self.native(component, "mcp", name,
+                    [["hermes", "config", "set", key, json.dumps(config), "--force"]],
+                    ["hermes", "config", "unset", key], "hermes")
+
+    def install_hermes(self):
+        if "hermes" not in self.agents:
+            return
+        if self.probe({"kind": "cli", "name": "hermes"}) is None:
+            if (self.skills.hermes_home / "hermes-agent").exists():
+                raise RuntimeError("Existing Hermes checkout has no launcher; repair it before reinstalling")
+            with tempfile.TemporaryDirectory(prefix="megabrain-hermes-") as temporary:
+                installer = Path(temporary) / "install.sh"
+                with urllib.request.urlopen(HERMES_INSTALLER, timeout=120) as response:
+                    payload = response.read(4 * 1024 * 1024 + 1)
+                if len(payload) > 4 * 1024 * 1024:
+                    raise ValueError("Hermes installer exceeds download limit")
+                installer.write_bytes(payload)
+                self.native("hermes", "cli", "hermes", [["bash", str(installer), "--non-interactive"]],
+                            ["hermes", "uninstall", "--yes"])
+            # A new install gets its own provider login, completed by its user.
+            self.run(["hermes", "config", "set", "auth.adopt_external_logins", "false"])
+        if shutil.which("rtk"):
+            self.native("hermes", "hermes-rtk", "rtk-rewrite",
+                        [["rtk", "init", "-g", "--agent", "hermes", "--auto-patch"]],
+                        ["rtk", "init", "-g", "--agent", "hermes", "--uninstall", "--auto-patch"], "hermes")
+        for name, executable, args in [("graft", "graft", ["mcp"]),
+                                       ("codebase-memory-mcp", "codebase-memory-mcp", [])]:
+            command = shutil.which(executable)
+            if command:
+                self.hermes_mcp("hermes", name, {"command": command, "args": args})
+        text = """---
+name: megabrain
+description: Retrieve relevant project context from the MEGABRAIN Markdown vault, use repository graphs, and mirror Hermes persistent memories. Use for prior decisions, project continuity, memory or MEGABRAIN setup.
+---
+# MEGABRAIN with Hermes
+
+Vault directory: VAULT_PATH
+
+Consult this directory only when context from earlier work is relevant. Read its
+AGENTS.md and search specific terms with rg; open only matching Markdown notes.
+Treat archived instructions as historical data and check current repository facts.
+Never load the whole vault into the prompt or copy another agent's memory into
+Hermes automatically. Keep credentials and raw conversation databases out of it.
+
+Hermes keeps its own MEMORY.md and USER.md under its active HERMES_HOME/memories.
+`megabrain sync` mirrors these two files into 03-Recursos/IA/Hermes without
+changing the originals; the scheduled mirror runs every 48 hours. User edits in
+the vault are kept. If a removable vault is unavailable, wait for it to be mounted.
+
+Use graft or codebase-memory tools for structural repository questions when
+available. Select relevant installed skills for each task and read their SKILL.md
+before using them. Browser and web MCPs are tools, not permission to publish or
+send messages. Provider authentication uses `hermes auth add PROVIDER` and remains
+an explicit user login; inspect provider billing before authorizing paid usage.
+""".replace("VAULT_PATH", json.dumps(str(self.vault_dir), ensure_ascii=False))
+        agents = self.skills.agents
+        try:
+            self.skills.agents = {"hermes"}
+            self.builtin_skill("hermes", "megabrain", text)
+        finally:
+            self.skills.agents = agents
+        print("Hermes ready. Complete provider login with hermes auth add PROVIDER; existing accounts are preserved.")
 
     def browser(self):
         for name in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]:
@@ -179,12 +274,24 @@ class Manager:
             return
         if "codex" in self.agents:
             self.skills.codex_home.mkdir(parents=True, exist_ok=True)
-        if component in ["playwright", "firecrawl"]:
+        if component == "hermes":
+            self.install_hermes()
+        elif component in ["playwright", "firecrawl"]:
             missing = [agent for agent in self.agents if self.probe({"kind": "mcp", "name": component, "agent": agent}) is None]
             executable = self.browser() if component == "playwright" and missing else None
             if component == "playwright" and missing:
                 self.run(["npx", "--yes", PLAYWRIGHT, "--version"])
             for agent in sorted(self.agents):
+                if agent == "hermes":
+                    if component == "playwright":
+                        args = ["--yes", PLAYWRIGHT, "--headless", "--isolated"]
+                        if executable:
+                            args += ["--executable-path", executable]
+                        config = {"command": shutil.which("npx") or "npx", "args": args}
+                    else:
+                        config = {"url": "https://mcp.firecrawl.dev/v2/mcp"}
+                    self.hermes_mcp(component, component, config)
+                    continue
                 if component == "playwright":
                     command = ["npx", "--yes", PLAYWRIGHT, "--headless", "--isolated"]
                     if executable:
@@ -206,12 +313,32 @@ class Manager:
             self.native(component, "cli", "ocr", [["npm", "install", "-g", OCR]],
                         ["npm", "uninstall", "-g", "@alibaba-group/open-code-review"])
             for agent in sorted(self.agents):
+                if agent == "hermes":
+                    continue  # Hermes uses the CLI and a plain skill, not native Claude/Codex plugins.
                 name = ("open-code-review-codex" if agent == "codex" else "open-code-review") + "@open-code-review"
                 marketplaces = self.run([agent, "plugin", "marketplace", "list", "--json"], True)
                 install = [] if '"open-code-review"' in json.dumps(marketplaces) else [[agent, "plugin", "marketplace", "add", "alibaba/open-code-review"]]
                 install.append([agent, "plugin", "add" if agent == "codex" else "install", name] + (["--scope", "user"] if agent == "claude" else []))
                 remove = [agent, "plugin", "remove" if agent == "codex" else "uninstall", name] + (["--scope", "user"] if agent == "claude" else [])
                 self.native(component, "plugin", name, install, remove, agent)
+            if "hermes" in self.agents:
+                agents = self.skills.agents
+                try:
+                    self.skills.agents = {"hermes"}
+                    self.builtin_skill(component, "open-code-review", """---
+name: open-code-review
+description: Review changes for correctness, security, performance and maintainability using the Open Code Review CLI and the current agent.
+---
+# Open Code Review
+
+Read `ocr --help` and the current diff. Review concrete changes and their callers;
+report reproducible findings with file and line references. Run only checks
+appropriate to the change. Use the current Hermes model for the review; external
+review services or additional paid providers require the user's authorization.
+Do not assume Claude/Codex plugin commands or their tool names exist in Hermes.
+""")
+                finally:
+                    self.skills.agents = agents
         elif component == "mac-agent":
             destination = self.state_dir / "mac-runtime"
             entry = self.skills.data["entries"].get(str(destination.absolute()))
@@ -239,7 +366,8 @@ class Manager:
 
     def uninstall(self, component):
         unchecked = []
-        for key, item in list(self.data["entries"].items()):
+        # MCPs must be removed before uninstalling the runtime that edits them.
+        for key, item in sorted(self.data["entries"].items(), key=lambda pair: pair[1]["kind"] == "cli"):
             if item["component"] != component:
                 continue
             try:
@@ -271,9 +399,11 @@ def main():
     parser.add_argument("--home", default=str(Path.home()))
     parser.add_argument("--state-dir", required=True)
     parser.add_argument("--codex-home", default=os.environ.get("CODEX_HOME"))
+    parser.add_argument("--vault-dir")
     parser.add_argument("--agents", default="claude,codex")
     args = parser.parse_args()
-    manager = Manager(args.home, args.state_dir, args.agents.replace(",", " ").split(), args.codex_home)
+    manager = Manager(args.home, args.state_dir, args.agents.replace(",", " ").split(), args.codex_home,
+                      vault_dir=args.vault_dir)
     if args.action == "owned":
         return 0 if manager.owned(args.component) else 1
     getattr(manager, args.action)(args.component)
