@@ -332,7 +332,8 @@ def right_panel(st, now):
     # Keep all components reachable within the fixed-height brain layout.
     visible = 9
     if st.mode == "installed":
-        start = (int(max(0, now - st.t_start) // 5) * visible) % len(step_rows)
+        pages = (len(step_rows) + visible - 1) // visible
+        start = (int(max(0, now - st.t_start) // 5) % pages) * visible
     else:
         active_index = next((i for i, s in enumerate(st.steps) if s.state == "running"),
                             max((i for i, s in enumerate(st.steps) if s.state != "pending"), default=0))
