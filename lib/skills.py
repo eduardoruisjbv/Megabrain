@@ -11,6 +11,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import shlex
 import stat
 import subprocess
 import sys
@@ -191,6 +192,34 @@ class Installer:
         self.data["entries"][str(path)] = dict(details, component=component, kind=kind)
         self.save()
 
+    def save_router_roots(self, roots):
+        directory = self.state_dir / "skill-router"
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        shared = self.home / ".agents/skills"
+        clients = {
+            "codex": (self.codex_home, "codex"),
+            "claude": (self.home / ".claude", "claude"),
+        }
+        for client, (base, agent) in clients.items():
+            if agent not in self.agents:
+                continue
+            selected = [str(Path(root).absolute()) for root in roots
+                        if Path(root).absolute() == shared.absolute()
+                        or base.absolute() == Path(root).absolute()
+                        or base.absolute() in Path(root).absolute().parents]
+            target = directory / ("roots-" + client + ".json")
+            temporary = target.with_suffix(".tmp")
+            temporary.write_text(json.dumps(selected) + "\n", encoding="utf-8")
+            temporary.chmod(0o600)
+            os.replace(str(temporary), str(target))
+
+    def invalidate_router_index(self):
+        for path in (self.state_dir / "skill-router").glob("local-index-*.json"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
     def owned_parents(self, path):
         return [(Path(key), item) for key, item in self.data["entries"].items()
                 if item["kind"] == "directory" and Path(key) in path.parents
@@ -219,9 +248,59 @@ class Installer:
             item["after"] = digest(parent)
         self.remember(path, "skills-auto", kind, backup=backup, after=digest(path), **details)
 
+    def edit_hook(self, path, new_text, event, command):
+        """Merge one owned hook even when a user changed other settings later."""
+        before = path.read_text(encoding="utf-8") if path.exists() else None
+        key = str(path)
+        previous = self.data["entries"].get(key)
+        preserve_existing = bool(previous and previous.get("after") != digest(path)) or bool(previous and previous.get("preserve_existing"))
+        backup = previous.get("backup") if previous and not preserve_existing else None
+        if before is not None and not backup and not preserve_existing:
+            backup_path = self.state_dir / "skills-backups" / hashlib.sha256(key.encode()).hexdigest()
+            backup_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            backup_path.write_text(before, encoding="utf-8")
+            backup_path.chmod(0o600)
+            backup = str(backup_path)
+        parents = self.owned_parents(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(new_text, encoding="utf-8")
+        for parent, item in parents:
+            item["after"] = digest(parent)
+        self.remember(path, "skills-auto", "router-hook", backup=backup, after=digest(path),
+                      event=event, command=command, preserve_existing=preserve_existing)
+
+    def register_router_hook(self, path, event, command):
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(data, dict):
+            raise ValueError("Invalid hook settings object: " + str(path))
+        hooks = data.setdefault("hooks", {})
+        if not isinstance(hooks, dict):
+            raise ValueError("Invalid hooks object: " + str(path))
+        groups = hooks.setdefault(event, [])
+        if not isinstance(groups, list):
+            raise ValueError("Invalid hook event list: " + event)
+        found = False
+        changed = False
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks", []), list):
+                continue
+            for handler in group.get("hooks", []):
+                if isinstance(handler, dict) and handler.get("command") == command:
+                    found = True
+                    if handler.get("timeout") != 65:
+                        handler["timeout"] = 65
+                        changed = True
+        if not found:
+            groups.append({"hooks": [{"type": "command", "command": command, "timeout": 65}]})
+            changed = True
+        if changed:
+            self.edit_hook(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                           event=event, command=command)
+
     def install_collection(self, component, source=None):
         """Install every pinned source of a component; `source` replaces downloads
         (one path for all sources, or a mapping of repository to path)."""
+        self.invalidate_router_index()
         if not self.agents:
             return {"created": 0, "preexisting": 0}
         specs = COLLECTIONS.get(component, [(None, None, ["skills/*/SKILL.md"], {})])
@@ -335,6 +414,7 @@ class Installer:
         self.save()
 
     def install_auto(self):
+        self.invalidate_router_index()
         instructions = []
         if "codex" in self.agents:
             instructions.append(self.codex_home / "AGENTS.md")
@@ -349,7 +429,9 @@ class Installer:
             else:
                 self.refresh_block(path, before)
         seen = set()
-        for root in self.skill_roots():
+        active_roots = self.skill_roots()
+        self.save_router_roots(active_roots)
+        for root in active_roots:
             # pathlib does not recurse into symlink directories. Resolve direct
             # personal-skill links so both installed layouts are supported.
             candidates = list(root.rglob("SKILL.md")) + list(root.rglob("openai.yaml")) if root.is_dir() else []
@@ -387,12 +469,27 @@ class Installer:
             if not settings["skillOverrides"] and not had_overrides:
                 settings.pop("skillOverrides")
             self.edit(path, json.dumps(settings, ensure_ascii=False, indent=2) + "\n", kind="settings")
+        hook_script = self.state_dir.parent / "lib/skill_router.py"
+        hook_command_codex = "python3 " + shlex.quote(str(hook_script)) + " hook --client codex"
+        hook_command_claude = "python3 " + shlex.quote(str(hook_script)) + " hook --client claude"
+        if "codex" in self.agents:
+            self.register_router_hook(self.codex_home / "hooks.json", "UserPromptSubmit", hook_command_codex)
+        if "claude" in self.agents:
+            self.register_router_hook(self.home / ".claude/settings.json", "UserPromptSubmit", hook_command_claude)
         return {"owned_entries": len(self.owned("skills-auto"))}
 
     def owned(self, component):
         return {key: item for key, item in self.data["entries"].items() if item["component"] == component}
 
     def uninstall(self, component):
+        if component == "skills-auto" or component in COLLECTIONS:
+            self.invalidate_router_index()
+        if component == "skills-auto":
+            for client in ("codex", "claude"):
+                try:
+                    (self.state_dir / "skill-router" / ("roots-" + client + ".json")).unlink()
+                except OSError:
+                    pass
         result = {"removed": 0, "kept_modified": 0}
         entries = self.owned(component)
         for key, item in sorted(entries.items(), key=lambda pair: pair[1]["kind"] == "directory"):
@@ -402,7 +499,7 @@ class Installer:
                 if path.is_symlink() and os.readlink(str(path)) == item["target"]:
                     path.unlink()
                     remove = True
-            elif exists(path) and digest(path) == item.get("after"):
+            elif exists(path) and digest(path) == item.get("after") and not (item["kind"] == "router-hook" and item.get("preserve_existing")):
                 parents = self.owned_parents(path)
                 if item["kind"] == "directory":
                     shutil.rmtree(path)
@@ -418,6 +515,28 @@ class Installer:
                 if item["block"] in text:
                     path.write_text(text.replace(item["block"], "", 1), encoding="utf-8")
                     remove = True
+            elif item["kind"] == "router-hook" and path.is_file() and not path.is_symlink():
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    hooks = data.get("hooks", {})
+                    groups = hooks.get(item.get("event"), [])
+                    kept = []
+                    for group in groups:
+                        group["hooks"] = [entry for entry in group.get("hooks", []) if entry.get("command") != item.get("command")]
+                        if group["hooks"]:
+                            kept.append(group)
+                    if kept:
+                        hooks[item["event"]] = kept
+                    else:
+                        hooks.pop(item.get("event"), None)
+                    if not hooks:
+                        data.pop("hooks", None)
+                    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                    if digest(path) != item.get("after"):
+                        result["kept_modified"] += 1
+                    remove = True
+                except (ValueError, TypeError):
+                    pass
             if remove:
                 self.data["entries"].pop(key)
                 result["removed"] += 1

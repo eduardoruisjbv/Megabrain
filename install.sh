@@ -18,6 +18,7 @@
 #   bash install.sh uninstall        remove what MEGABRAIN installed
 #   bash install.sh status           show what is installed
 #   megabrain mac --help              run persistent Codex/Claude jobs on your Mac
+#   megabrain skill-router status     inspect contextual skill routing
 #   bash install.sh --list-agents    show detected agents and exit
 #
 # Options:
@@ -38,7 +39,7 @@
 
 set -uo pipefail
 
-MB_VERSION="1.2.0"
+MB_VERSION="1.3.0"
 AI_MEMORY_VERSION="3.1.0"
 MB_REPO="eduardoruisjbv/Megabrain"
 MB_REF="${MEGABRAIN_REF:-main}"
@@ -68,7 +69,8 @@ VAULT_DIR="${MEGABRAIN_VAULT:-$MB_HOME/vault}"
 VAULT_DIR_OVERRIDE=0
 [ -n "${MEGABRAIN_VAULT:-}" ] && VAULT_DIR_OVERRIDE=1
 
-MAC_ARGS=()
+MAC_ARGS=(); SKILL_ARGS=()
+if [ "${1:-}" = skill-router ]; then CMD=skill-router; shift; SKILL_ARGS=("$@"); set --; fi
 if [ "${1:-}" = mac ]; then
   CMD=mac; shift; MAC_ARGS=("$@"); set --
 fi
@@ -109,7 +111,7 @@ want() { # want <item>
 }
 
 # ---------- logging / UI plumbing ----------
-UI_ON=0; UI_PID=""; EV=""; ANS=""; LIB_DIR=""; SKILLS_LIB=""; INTEGRATIONS_LIB=""; CUR=""; STEP_FAILED=0
+UI_ON=0; UI_PID=""; EV=""; ANS=""; LIB_DIR=""; SKILLS_LIB=""; SKILL_ROUTER_LIB=""; INTEGRATIONS_LIB=""; CUR=""; STEP_FAILED=0
 FAILED=""; LOGFILE="/dev/null"; PATH_ADDED=0
 
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -233,13 +235,17 @@ ensure_lib() { # find (or download) ui.py + brain_energize.py
 
 ensure_skills_lib() {
   local d tmp
-  for d in "$SELF_DIR/lib" "$SELF_DIR" "$LIB_DIR" "$MB_HOME/lib"; do
-    if [ -n "$d" ] && [ -f "$d/skills.py" ]; then SKILLS_LIB="$d/skills.py"; return 0; fi
+  # Use one checkout only when both helpers come from the same source revision.
+  for d in "$SELF_DIR/lib" "$SELF_DIR" "$LIB_DIR"; do
+    if [ -n "$d" ] && [ -f "$d/skills.py" ] && [ -f "$d/skill_router.py" ]; then
+      SKILLS_LIB="$d/skills.py"; SKILL_ROUTER_LIB="$d/skill_router.py"; return 0
+    fi
   done
   have curl || return 1
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/megabrain-skills-lib.XXXXXX")" || return 1
-  if curl -fsSL --max-time 30 "$MB_RAW/lib/skills.py" -o "$tmp/skills.py" >>"$LOGFILE" 2>&1; then
-    SKILLS_LIB="$tmp/skills.py"; return 0
+  if curl -fsSL --max-time 30 "$MB_RAW/lib/skills.py" -o "$tmp/skills.py" >>"$LOGFILE" 2>&1 \
+     && curl -fsSL --max-time 30 "$MB_RAW/lib/skill_router.py" -o "$tmp/skill_router.py" >>"$LOGFILE" 2>&1; then
+    SKILLS_LIB="$tmp/skills.py"; SKILL_ROUTER_LIB="$tmp/skill_router.py"; return 0
   fi
   rm -rf "$tmp"; return 1
 }
@@ -568,6 +574,13 @@ install_cli() { # keep a copy so `megabrain` works from anywhere
     for name in ui.py brain_energize.py; do copy_atomic "$LIB_DIR/$name" "$dest/$name"; done
   fi
   [ -n "$SKILLS_LIB" ] && copy_atomic "$SKILLS_LIB" "$dest/skills.py"
+  if [ -n "$SKILL_ROUTER_LIB" ]; then copy_atomic "$SKILL_ROUTER_LIB" "$dest/skill_router.py"
+  else
+    local source
+    for source in "$SELF_DIR/lib/skill_router.py" "$SELF_DIR/skill_router.py" "$LIB_DIR/skill_router.py" "$dest/skill_router.py"; do
+      if [ -f "$source" ]; then copy_atomic "$source" "$dest/skill_router.py"; break; fi
+    done
+  fi
   if [ -n "$INTEGRATIONS_LIB" ]; then
     local source; source="$(dirname "$INTEGRATIONS_LIB")"
     for name in integrations.py mac_agent.py mac_worker.py; do
@@ -1355,6 +1368,13 @@ main() {
     version) echo "MEGABRAIN $MB_VERSION"; return 0 ;;
     status) cmd_status; return $? ;;
     sync) cmd_sync; return $? ;;
+    skill-router)
+      local router="$MB_HOME/lib/skill_router.py"
+      if [ ! -f "$router" ]; then
+        if ensure_skills_lib && [ -n "$SKILL_ROUTER_LIB" ]; then copy_atomic "$SKILL_ROUTER_LIB" "$router"; fi
+      fi
+      [ -f "$router" ] || { echo "Could not load the skill router module" >&2; return 1; }
+      python3 "$router" "${SKILL_ARGS[@]}"; return $? ;;
     mac)
       local client="$MB_HOME/state/mac-runtime/mac_agent.py"
       if [ ! -f "$client" ]; then

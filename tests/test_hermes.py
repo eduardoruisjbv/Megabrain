@@ -126,6 +126,7 @@ class HermesTest(unittest.TestCase):
         installer.install_collection("security-audit", self.home / "upstream")
         self.assertTrue((self.home / ".hermes/skills/security-audit").is_symlink())
         installer.install_auto()
+        self.assertFalse((self.home / ".hermes/hooks.json").exists())
         installer.install_auto()
         self.assertEqual(soul.read_text().count(AUTO_BEGIN), 1)
         installer.uninstall("skills-auto")

@@ -98,6 +98,67 @@ class SkillsTest(unittest.TestCase):
         self.assertEqual(settings_path.read_text(), original)
         self.assertIn("allow_implicit_invocation: false", metadata.read_text())
 
+    def test_auto_registers_codex_and_claude_router_hooks_and_removes_only_them(self):
+        codex_hooks = self.home / ".codex/hooks.json"
+        codex_hooks.parent.mkdir()
+        codex_hooks.write_text(json.dumps({"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "keep-me"}]}]}}))
+        claude_settings = self.home / ".claude/settings.json"
+        claude_settings.parent.mkdir()
+        claude_settings.write_text(json.dumps({"language": "pt-BR", "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "keep-me"}]}]}}))
+        with mock.patch.object(self.installer, "skill_roots", return_value=[]):
+            self.installer.install_auto()
+            self.installer.install_auto()
+        codex = json.loads(codex_hooks.read_text())
+        self.assertEqual(len(codex["hooks"]["UserPromptSubmit"]), 1)
+        self.assertEqual(codex["hooks"]["UserPromptSubmit"][0]["hooks"][0]["timeout"], 65)
+        claude = json.loads(claude_settings.read_text())
+        self.assertEqual(len(claude["hooks"]["UserPromptSubmit"]), 1)
+        self.assertEqual(claude["hooks"]["UserPromptSubmit"][0]["hooks"][0]["timeout"], 65)
+        self.assertEqual(claude["language"], "pt-BR")
+        self.installer.uninstall("skills-auto")
+        codex = json.loads(codex_hooks.read_text())
+        claude = json.loads(claude_settings.read_text())
+        self.assertNotIn("UserPromptSubmit", codex["hooks"])
+        self.assertNotIn("UserPromptSubmit", claude["hooks"])
+        self.assertIn("keep-me", json.dumps(codex))
+        self.assertIn("keep-me", json.dumps(claude))
+
+    def test_auto_update_installs_hook_when_legacy_settings_entry_was_modified(self):
+        settings_path = self.home / ".claude/settings.json"
+        settings_path.parent.mkdir(parents=True)
+        baseline = {"language": "pt-BR"}
+        settings_path.write_text(json.dumps(baseline) + "\n")
+        self.installer.edit(settings_path, json.dumps({"language": "pt-BR", "skillListingBudgetFraction": 0.03}) + "\n", kind="settings")
+        changed = json.loads(settings_path.read_text())
+        changed["theme"] = "user-theme"
+        settings_path.write_text(json.dumps(changed) + "\n")
+        with mock.patch.object(self.installer, "skill_roots", return_value=[]):
+            self.installer.install_auto()
+        installed = json.loads(settings_path.read_text())
+        self.assertEqual(installed["theme"], "user-theme")
+        self.assertEqual(len(installed["hooks"]["UserPromptSubmit"]), 1)
+        self.installer.uninstall("skills-auto")
+        cleaned = json.loads(settings_path.read_text())
+        self.assertEqual(cleaned["theme"], "user-theme")
+        self.assertNotIn("UserPromptSubmit", cleaned.get("hooks", {}))
+
+    def test_auto_update_merges_hooks_after_user_settings_change(self):
+        with mock.patch.object(self.installer, "skill_roots", return_value=[]):
+            self.installer.install_auto()
+        settings_path = self.home / ".claude/settings.json"
+        settings = json.loads(settings_path.read_text())
+        settings["theme"] = "user-theme"
+        settings_path.write_text(json.dumps(settings))
+        with mock.patch.object(self.installer, "skill_roots", return_value=[]):
+            self.installer.install_auto()
+        updated = json.loads(settings_path.read_text())
+        self.assertEqual(updated["theme"], "user-theme")
+        self.assertEqual(len(updated["hooks"]["UserPromptSubmit"]), 1)
+        self.installer.uninstall("skills-auto")
+        cleaned = json.loads(settings_path.read_text())
+        self.assertEqual(cleaned["theme"], "user-theme")
+        self.assertNotIn("UserPromptSubmit", cleaned.get("hooks", {}))
+
     def test_auto_cleanup_keeps_later_user_edits(self):
         with mock.patch.object(self.installer, "skill_roots", return_value=[]):
             self.installer.install_auto()

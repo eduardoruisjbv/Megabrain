@@ -1,0 +1,116 @@
+{
+  ".github/workflows/ci.yml": {
+    "mtime": 1792956860.1660204,
+    "seen": 1793059745.2400823,
+    "ast_hash": "233d716cdd3ed38f1e9f616cb006c2db",
+    "semantic_hash": ""
+  },
+  "install.sh": {
+    "mtime": 1793060000.1473641,
+    "seen": 1793060175.3163674,
+    "ast_hash": "c542a8e6f2b671782009e8337e3415aa",
+    "semantic_hash": ""
+  },
+  "lib/brain_energize.py": {
+    "mtime": 1792956860.1664033,
+    "seen": 1793059745.2400897,
+    "ast_hash": "bf47a9f5c93638e20de4d57f0f07369f",
+    "semantic_hash": ""
+  },
+  "lib/integrations.py": {
+    "mtime": 1792956860.166893,
+    "seen": 1793059745.240091,
+    "ast_hash": "fa37341968bd4ba10e3f963117c483de",
+    "semantic_hash": ""
+  },
+  "lib/mac_agent.py": {
+    "mtime": 1792956860.166893,
+    "seen": 1793059745.2400925,
+    "ast_hash": "328addd7605a3775993c5ed2e9afbe98",
+    "semantic_hash": ""
+  },
+  "lib/mac_worker.py": {
+    "mtime": 1792956860.166893,
+    "seen": 1793059745.2400935,
+    "ast_hash": "8ac7c56ddf2db804eb72a298e4e5e693",
+    "semantic_hash": ""
+  },
+  "lib/skill_router.py": {
+    "mtime": 1793060304.6009927,
+    "seen": 1793060324.8221684,
+    "ast_hash": "c5b725c733ffa7ccdb2e4567b4aeaadb",
+    "semantic_hash": ""
+  },
+  "lib/skills.py": {
+    "mtime": 1793059993.0160675,
+    "seen": 1793060175.3163779,
+    "ast_hash": "da9676b2a40657d66c4ecf1414471f5d",
+    "semantic_hash": ""
+  },
+  "lib/ui.py": {
+    "mtime": 1792956860.166893,
+    "seen": 1793059745.240097,
+    "ast_hash": "630f6341fa0f5f6b0725df408b8278b9",
+    "semantic_hash": ""
+  },
+  "tests/test_hermes.py": {
+    "mtime": 1793059389.6137836,
+    "seen": 1793059745.2400982,
+    "ast_hash": "6af873810bd8d2d1b58a27ae2bc3014f",
+    "semantic_hash": ""
+  },
+  "tests/test_integrations.py": {
+    "mtime": 1792956860.1673303,
+    "seen": 1793059745.2400994,
+    "ast_hash": "f67fac1eb723eb6f26cb58383f9e0a3d",
+    "semantic_hash": ""
+  },
+  "tests/test_skill_router.py": {
+    "mtime": 1793060313.4169633,
+    "seen": 1793060324.822176,
+    "ast_hash": "9b34f2a9ab2350abf932f4a726281b54",
+    "semantic_hash": ""
+  },
+  "tests/test_skills.py": {
+    "mtime": 1793059984.3734846,
+    "seen": 1793060175.3163843,
+    "ast_hash": "64019cc2d8fdb93438b33e9dd2bc2058",
+    "semantic_hash": ""
+  },
+  "uninstall.sh": {
+    "mtime": 1792956860.1673303,
+    "seen": 1793059745.240103,
+    "ast_hash": "cc42485ffd94ecca045204d7865ffee1",
+    "semantic_hash": ""
+  },
+  "CHANGELOG.md": {
+    "mtime": 1793059309.5338986,
+    "seen": 1793059745.240104,
+    "ast_hash": "1505e0ef46e56f487a3df63fab02ff8e",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1793060097.8291996,
+    "seen": 1793060175.3163877,
+    "ast_hash": "f0061c0fd4b1fd02a538ba6e25623842",
+    "semantic_hash": ""
+  },
+  "docs/ARCHITECTURE.md": {
+    "mtime": 1792956860.1660204,
+    "seen": 1793059745.2401059,
+    "ast_hash": "d9dce0020e6dc1fb9be9dd4dd5553baf",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-10-26-contextual-skill-router.md": {
+    "mtime": 1793059863.8355865,
+    "seen": 1793060175.3163896,
+    "ast_hash": "5f8e8f1fd569e655956fad67e9fd6ccf",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-10-26-contextual-skill-router-design.md": {
+    "mtime": 1793060097.828892,
+    "seen": 1793060175.3163908,
+    "ast_hash": "f52d95daa534c6c73d3f565d8a9f35a5",
+    "semantic_hash": ""
+  }
+}

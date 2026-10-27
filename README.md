@@ -316,11 +316,20 @@ and raises Claude Code's skill-catalog budget to at least 3%. It honors
 `CODEX_HOME` and keeps built-in `.system` skills and disabled plugins unchanged.
 No model endpoint or API key is required for this configuration.
 
-Skills are selected **when relevant to a task**, rather than executing every
-installed skill on every prompt. Selection remains an agent decision. Full audits
-follow the audit skill's triggering conditions; installing a skill does not start
-a scan, capture, exploit, or remote operation. Normal permissions still apply.
-Start a new agent session to load the updated catalog and instructions.
+The contextual router adds a local `UserPromptSubmit` hook for Codex and Claude Code.
+It ranks installed skill names from metadata on each prompt. Unknown or medium
+reasoning effort uses only local skills. High effort can query the optional Skills
+CLI when no local match reaches the configured threshold. External results are
+used as temporary prompt context. The router never installs them permanently or
+runs their scripts. It sends up to eight redacted topic terms to the catalog. Megabrain disables the catalog CLI's anonymous telemetry.
+
+Run `megabrain skill-router status` to inspect the policy. Set it with
+`megabrain skill-router config --effort auto --external on --threshold 0.5 --timeout 15`.
+Run `megabrain skill-router setup-catalog` to install the pinned optional catalog
+CLI. This command contacts npm. The local query cache expires after 24 hours.
+
+Codex requires the user to review and trust the new hook in `/hooks`. Claude Code
+loads it from its user settings. Start a new session after installation.
 
 The separate ownership ledger, `~/.megabrain/state/skills.json`, survives forced
 and selected-component reinstalls. Uninstall removes unchanged managed copies and
