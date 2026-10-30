@@ -44,6 +44,19 @@ open-source tools that cut token usage, provide shared agent memory, and create
 a plain-Markdown **knowledge vault** you own. It is reversible: a safe
 uninstaller removes only what it installed.
 
+## How Megabrain works
+
+```mermaid
+flowchart LR
+ A[Choose agent tools] --> B[Installer checks platform]
+ B --> C[Install token-saving utilities]
+ B --> D[Configure agent integrations]
+ D --> E[Shared Markdown memory vault]
+ C --> F[Agents use local workflow]
+ E --> F
+ F --> G[Uninstall or update safely]
+```
+
 ## Quick start
 
 ```bash
